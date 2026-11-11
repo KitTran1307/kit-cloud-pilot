@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0
+
+- **`start --model` and `--effort`** pick the cloud session's lead model and effort level (`claude --model <m>
+  --effort <e> --cloud` sends both with the new session). Defaults: `CLOUD_PILOT_MODEL`, `CLOUD_PILOT_EFFORT`; unset,
+  the account's default model as before.
+- **`CLOUD_PILOT_DENY_MODELS`** (for example `opus,fable`) refuses a start whose model contains a listed word, and a
+  start without a model while the list is set, so cloud sessions stay below the model of the session that starts them.
+- **`questions --repo --pr`** lists a PR's open channel questions with the `question_sha256` that `answer` needs, for
+  when the hub event that carried it is lost (the waiter was killed). `answer` points to it when the hash does not match.
+- **A PR merged outside GitHub counts as merged.** A PR closed unmerged whose head commit is in its base branch (merged
+  locally and pushed, the branch deleted first) is reported as `merged` with `landed: true`, not `closed`; the hub
+  waits up to 15 min after the close for that push.
+  The skill now says to push the merged default branch before deleting the PR branch when merging on your machine.
+
 ## 1.1.1
 
 - This repository now holds releases only: one commit per release, with its notes here and on the Releases page.

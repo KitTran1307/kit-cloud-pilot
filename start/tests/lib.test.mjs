@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_BRIEF, StartError, analyze, briefArg, checkBranch, checkBrief, claudeArgv, cleanOutput, defaultTitle, detectBranch,
+  MAX_BRIEF, StartError, analyze, briefArg, checkBranch, checkBrief, checkDenied, claudeArgv, cleanOutput, defaultTitle, detectBranch,
   detectPrompt, findSessionUrl, isLocalOnly, makeTitle, parseArgs, parseLocalOnly, promptError, resolveClaude, tailOf,
 } from '../lib.mjs';
 
@@ -182,11 +182,11 @@ describe('title', () => {
 describe('parseArgs', () => {
   test('defaults', () => {
     const a = parseArgs(['--brief', 'do it']);
-    assert.deepEqual(a, { help: false, cwd: undefined, brief: 'do it', briefFile: undefined, branch: undefined, title: undefined, timeoutSec: 90, track: true, permissionMode: undefined });
+    assert.deepEqual(a, { help: false, cwd: undefined, brief: 'do it', briefFile: undefined, branch: undefined, title: undefined, timeoutSec: 90, track: true, permissionMode: undefined, model: undefined, effort: undefined });
   });
   test('every flag, both spellings', () => {
     const a = parseArgs(['--cwd', '/r', '--brief-file=b.md', '--branch', 'claude/x', '--title=T', '--timeout', '30', '--no-track', '--permission-mode', 'auto']);
-    assert.deepEqual(a, { help: false, cwd: '/r', brief: undefined, briefFile: 'b.md', branch: 'claude/x', title: 'T', timeoutSec: 30, track: false, permissionMode: 'auto' });
+    assert.deepEqual(a, { help: false, cwd: '/r', brief: undefined, briefFile: 'b.md', branch: 'claude/x', title: 'T', timeoutSec: 30, track: false, permissionMode: 'auto', model: undefined, effort: undefined });
   });
   test('a value that starts with -- is still a value', () => {
     assert.equal(parseArgs(['--brief', '--- notes']).brief, '--- notes');
@@ -229,6 +229,8 @@ describe('brief', () => {
     assert.deepEqual(claudeArgv(['/bin/claude'], 'do it'), ['/bin/claude', '--cloud', 'do it']);
     assert.deepEqual(claudeArgv(['node', 'fake.mjs'], '-x'), ['node', 'fake.mjs', '--cloud', ' -x']);
     assert.deepEqual(claudeArgv(['claude'], 'do it', 'auto'), ['claude', '--permission-mode', 'auto', '--cloud', 'do it']);
+    assert.deepEqual(claudeArgv(['claude'], 'do it', 'auto', { model: 'sonnet', effort: 'high' }),
+      ['claude', '--permission-mode', 'auto', '--model', 'sonnet', '--effort', 'high', '--cloud', 'do it']);
   });
   test('the argument list is never joined into a command string', () => {
     const brief = 'a "quoted" $(whoami) && echo; `x` %PATH% \\n\nline';
@@ -308,4 +310,24 @@ test('prompts drawn with cursor moves (no spaces left after cleanup) are still r
   // A brief that itself says these words, echoed without spaces, is not a prompt.
   const brief = 'Quick safety check: is this a project you trust? Not logged in.';
   assert.equal(detectPrompt('Quicksafetycheck:isthisaprojectyoutrust?Notloggedin.', brief), null);
+});
+
+describe('model, effort and the deny list', () => {
+  test('--model and --effort are parsed and checked', () => {
+    const a = parseArgs(['--brief', 'x', '--model', 'claude-sonnet-5-5[1m]', '--effort', 'xhigh']);
+    assert.equal(a.model, 'claude-sonnet-5-5[1m]');
+    assert.equal(a.effort, 'xhigh');
+    assert.throws(() => parseArgs(['--brief', 'x', '--model', '--x']), /--model must be/);
+    assert.throws(() => parseArgs(['--brief', 'x', '--model', 'a b']), /--model must be/);
+    assert.throws(() => parseArgs(['--brief', 'x', '--effort', 'huge']), /--effort must be one of/);
+  });
+  test('checkDenied: off without a list; with one, a model is required and must not contain a denied word', () => {
+    assert.equal(checkDenied(undefined, ''), undefined);
+    assert.equal(checkDenied('opus', undefined), 'opus');
+    assert.equal(checkDenied('sonnet', 'opus, fable'), 'sonnet');
+    assert.equal(checkDenied('claude-haiku-5-5', 'opus,fable'), 'claude-haiku-5-5');
+    assert.throws(() => checkDenied(undefined, 'opus'), /give the session a model/);
+    assert.throws(() => checkDenied('claude-Opus-5-5', 'opus,fable'), /denied/);
+    assert.throws(() => checkDenied('fable', 'opus,fable'), /denied/);
+  });
 });

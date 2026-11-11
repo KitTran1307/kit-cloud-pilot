@@ -8,6 +8,7 @@
 //   cloud-pilot wait [--max-min 240]          wait for this session's events (one JSON line); run in the background
 //   cloud-pilot status [--json] | untrack --id <id> | stop | doctor
 //   cloud-pilot channel keygen|fingerprint|setup <repo>|ask|wait   signed question channel
+//   cloud-pilot questions --repo owner/name --pr N [--all]   open questions with their question_sha256
 //   cloud-pilot answer --repo owner/name --pr N --id <id> --question-sha256 <hash> --answer "<text>"
 //   cloud-pilot version
 import { readFileSync, realpathSync } from 'node:fs';
@@ -30,6 +31,7 @@ export async function main(argv) {
   if (verb === 'version' || verb === '--version') { console.log(JSON.stringify({ ok: true, version: version(), root: ROOT })); return 0; }
   if (verb === 'start') return (await import('../start/index.mjs')).main(rest);
   if (verb === 'channel') return (await import('../channel/index.mjs')).main(rest);
+  if (verb === 'questions') return (await import('../channel/index.mjs')).main(['questions', ...rest]);
   if (verb === 'answer') return (await import('../channel/index.mjs')).main(['answer', ...rest]);
   if (HUB_VERBS.has(verb)) {
     const hub = await import('../hub/hub.mjs');

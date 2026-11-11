@@ -99,8 +99,26 @@ function prFact(p) {
     url: p.html_url, title: stripHidden(String(p.title ?? '')).slice(0, 200),
     flag: stripHidden(String(p.body ?? '').split('\n').find((l) => l.trim()) ?? '').slice(0, 300),
     author: p.user?.login ?? '', headSha: p.head?.sha ?? '', createdAt: p.created_at, closedAt: p.closed_at ?? null,
-    updatedMs: toMs(p.updated_at), headRepo: headRepoOf(p),
+    updatedMs: toMs(p.updated_at), headRepo: headRepoOf(p), baseRef: typeof p.base?.ref === 'string' ? p.base.ref : '',
   };
+}
+
+// A PR closed without GitHub's merge whose head commit is already in its base branch (merged locally and pushed, the
+// branch deleted first) counts as merged: `landed`. Read while the close is recent (CLOSE_GRACE_MS: the push to the base
+// branch often comes right after the close) and at most LATE_CLOSE_MS after it; then the answer is kept.
+export const CLOSE_GRACE_MS = 15 * 60_000;
+export function landedCheck(api, repo, pr, before, nowMs) {
+  if (pr.state !== 'closed' || pr.merged || !pr.headSha || !pr.baseRef) return;
+  const same = before && before.number === pr.number && before.closedAt === pr.closedAt;
+  if (same && (before.landed || before.landedFinal)) { pr.landed = Boolean(before.landed); pr.landedFinal = true; return; }
+  const since = nowMs - toMs(pr.closedAt);
+  if (!(since <= LATE_CLOSE_MS)) { pr.landedFinal = true; return; }
+  try {
+    const cmp = api.get(`repos/${repo}/compare/${encodeURIComponent(pr.baseRef)}...${pr.headSha}?per_page=1`);
+    pr.landed = cmp?.status === 'behind' || cmp?.status === 'identical';
+  } catch { pr.landed = false; }
+  pr.landedFinal = pr.landed || since > CLOSE_GRACE_MS;
+  if (pr.landed) { pr.merged = true; pr.mergedSha = null; }
 }
 
 // The repository the PR's head branch lives in, lowercase "owner/name"; '' when GitHub gives none (a deleted fork).
@@ -166,6 +184,7 @@ export function snapshot(api, repo, tracks, { nowMs = Date.now(), publicKey = nu
     if (prs[t.branch]) delete prs[t.branch].outOfWindow;
   }
   for (const [ref, pr] of Object.entries(prs)) {
+    if (!pr.outOfWindow) landedCheck(api, repo, pr, prev?.prs?.[ref], nowMs);
     if (pr.state !== 'open' || pr.outOfWindow) continue;
     const before = prev?.prs?.[ref];
     // A comment (or an edit, or a push) moves the PR's updated_at, so an unchanged PR keeps its comment facts and

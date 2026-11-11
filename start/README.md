@@ -156,6 +156,9 @@ Environment variables (the older `KIT_HUB_<NAME>` spelling is read when `CLOUD_P
 | `CLOUD_PILOT_CLAUDE_BIN` | The `claude` executable to run: a full path, or a name looked up on `PATH`. A `.js`, `.mjs` or `.cjs` file is run with Node (that is how the tests use a stand-in). |
 | `CLOUD_PILOT_LOCAL_ONLY` | Comma-separated account names that must never start cloud sessions, for example `work,client`. Matching ignores case. |
 | `CLOUD_PILOT_PERMISSION_MODE` | Permission mode for new sessions when `--permission-mode` is not given: `auto`, `acceptEdits` or `plan`. It is passed as `claude --permission-mode <m> --cloud`. `bypassPermissions` and `dontAsk` are refused: cloud sessions do not offer them and would drop them silently. |
+| `CLOUD_PILOT_MODEL` | Lead model for new sessions when `--model` is not given: an alias (`sonnet`, `haiku`) or a full model name. Passed as `claude --model <m> --cloud`, which sends it with the new session. Unset: the model this `claude` would start with (the account default). |
+| `CLOUD_PILOT_EFFORT` | Effort level for new sessions when `--effort` is not given: `low`, `medium`, `high`, `xhigh` or `max`. |
+| `CLOUD_PILOT_DENY_MODELS` | Comma-separated words a session's model must not contain, for example `opus,fable` to keep cloud sessions below the model of the session that starts them. With a list set, a start must name its model (`--model` or `CLOUD_PILOT_MODEL`) and is refused otherwise. |
 | `CLOUD_PILOT_PYTHON` | The Python 3 executable to use instead of searching for `python3`, `python` or `py -3`. |
 | `CLOUD_PILOT_DIR` | The data folder (default `~/.claude/cloud-pilot`): hub state, `sessions.jsonl`, and on Windows `venv/`. |
 

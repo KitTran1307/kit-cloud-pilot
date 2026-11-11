@@ -172,6 +172,7 @@ the entry point is `channel/index.mjs` (`main(argv)`, where `argv[0]` is the com
 | `cloud-pilot channel setup <repo path> [--write] [--public-key <file>]` | Dry run by default. Copies the cloud script, public key and pin, and updates the `CLAUDE.md` block. Refuses a folder that is not the root of a git working tree. |
 | `cloud-pilot channel ask --repo owner/name --pr N --id <id> --text "<question>"` | Posts the question. What the cloud session runs; works locally too. |
 | `cloud-pilot channel wait --repo owner/name --pr N --id <id> [--timeout-min 360] [--interval-sec 60] [--ask-authors a,b]` | Polls until a valid answer arrives. Locally it trusts your own public key; the copy in a repository trusts the shipped key and pin. |
+| `cloud-pilot channel questions --repo owner/name --pr N [--all] [--ask-authors a,b]` | Lists the PR's questions (open ones by default): id, `question_sha256`, text, author, edited, answered. For when the hub event with the hash is lost. Posts nothing. |
 | `cloud-pilot channel answer --repo owner/name --pr N --id <id> --question-sha256 <hash> --answer "<text>" [--valid-hours 24] [--ask-authors a,b] [--dry-run]` | Re-reads the ask from GitHub, checks it, signs and posts. `--dry-run` shows what would be signed and needs no private key. |
 
 ## Settings

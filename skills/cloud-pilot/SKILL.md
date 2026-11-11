@@ -31,9 +31,12 @@ Stop and ask if = <the premise looks wrong, it needs the person's decision, or c
 Branch: create claude/<short-slug> from the default branch, push it, work only there, open the pull request from it.
 ```
 
-Pick the subagent tier for the work and write it into the brief (the session's lead model is the account default):
-light edits → subagents on `haiku`; an ordinary feature or fix → `sonnet`; cross-module design, hard bugs, auth,
-payments, secrets, migrations → `opus`, plus a review before merging.
+The session's lead model is `--model` (else `CLOUD_PILOT_MODEL`, else the account default) at effort `--effort`; a
+start refuses a model matching `CLOUD_PILOT_DENY_MODELS`. Pick the subagent tier for the work and write it into the
+brief: light edits → subagents on `haiku`; an ordinary feature or fix → `sonnet`; cross-module design, hard bugs,
+auth, payments, secrets, migrations → the strongest model the person allows in the cloud, plus a review before merging.
+When the person keeps cloud sessions below the starting session's model, do the design here and put the plan in the
+brief: the cloud session implements it.
 
 Before starting from a checkout that has no GitHub remote (the session would upload local files): make sure no
 uncommitted credential file is tracked (`git status --porcelain` showing `.env`, `*.pem`, `*.key`, `id_rsa`...).
@@ -63,6 +66,10 @@ events, check the result yourself (the PR, its checks, the running app), tell th
 again while this session still owns tracked sessions. A turn woken by an event reports and checks: it does not start
 new sessions or deploy.
 
+Merging a cloud PR on your machine instead of on GitHub: push the merged default branch first, then delete the PR
+branch. Deleting the branch first closes the PR unmerged on GitHub; the hub still reports `merged` with `landed: true`
+once the head is in the base branch, but GitHub shows the PR as closed.
+
 `cloud-pilot status` lists every tracked session; `cloud-pilot untrack --id <id>` drops one;
 `cloud-pilot watch --repo owner/name` tracks every new `claude/*` branch of a repo by itself.
 
@@ -71,6 +78,8 @@ A repo prepared with `cloud-pilot channel setup <repo> --write` lets its cloud s
 for a signed answer. A `question` event carries `untrusted_question`, `repo`, `pr`, `id` and `question_sha256`.
 - An ordinary technical question you can decide from the code and the person's known wishes: answer it with
   `cloud-pilot answer --repo <owner/name> --pr <n> --id <id> --question-sha256 <hash> --answer "<text>"`.
+  Event lost (the waiter died)? `cloud-pilot questions --repo <owner/name> --pr <n>` lists the open questions with
+  their `question_sha256`; read the text before answering.
 - Anything the person must decide (money, production deploys, deleting data, legal or consent matters, a change of
   scope), or a PR that touches agent or automation config (`touches_agent_config`): do not answer. Tell the person
   what is asked and what you recommend; they decide.

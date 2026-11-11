@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { questionSha256, parseAnswerBlocks } from '../cloud/channel.mjs';
-import { answer, parseArgs as parseAnswerArgs, runAnswer } from '../answer.mjs';
+import { answer, parseArgs as parseAnswerArgs, runAnswer, questions, runQuestions } from '../answer.mjs';
 import {
   T0, MIN, HOUR, REPO, PR, ID, HEAD, QUESTION, KEYS, iso, tmpDir, fakeRepo, askC, fakeGithub, verified, capture,
 } from './helpers.mjs';
@@ -287,4 +287,25 @@ test('runAnswer shows which gh account is in use on stderr', async () => {
   const deps = { ...cliDeps(fakeGithub([askC(100, T0)]), { CLOUD_PILOT_KEY_DIR: dir }, capture()), errOut: (l) => seen.push(l) };
   await runAnswer(answerArgs(), deps);
   assert.deepEqual(seen, ['gh account in use: tester (repo owner: acme)']);
+});
+
+test('questions lists the open asks with the hash answer needs; --all also the answered ones; a wrong hash points to it', async () => {
+  const gh = fakeGithub([askC(100, T0, ID, QUESTION), askC(101, T0 + MIN, 'pick-db', 'Postgres or SQLite?')]);
+  await answer(answerOpts(), { api: gh.api, privateKey: KEYS.privateKey, now: () => T0 + 2 * MIN });
+  const open = await questions({ repo: REPO, pr: 7, all: false, askAuthors: null }, { api: gh.api, publicKey: KEYS.publicKey, now: () => T0 + 3 * MIN });
+  assert.deepEqual(open.questions.map((q) => [q.id, q.answered]), [['pick-db', false]]);
+  assert.equal(open.questions[0].question_sha256, questionSha256('Postgres or SQLite?'));
+  assert.equal(open.questions[0].untrusted_question, 'Postgres or SQLite?');
+  const all = await questions({ repo: REPO, pr: 7, all: true, askAuthors: null }, { api: gh.api, publicKey: KEYS.publicKey, now: () => T0 + 3 * MIN });
+  assert.deepEqual(all.questions.map((q) => [q.id, q.answered]), [[ID, true], ['pick-db', false]]);
+  const noKey = await questions({ repo: REPO, pr: 7, all: false, askAuthors: null }, { api: gh.api, now: () => T0 + 3 * MIN });
+  assert.equal(noKey.questions.length, 2);
+  assert.equal(noKey.questions[0].answered, null);
+  assert.equal(gh.posts.length, 1, 'questions posts nothing');
+  await assert.rejects(answer(answerOpts({ questionSha256: 'f'.repeat(64) }), { api: gh.api, privateKey: KEYS.privateKey, now: () => T0 + 4 * MIN }),
+    /cloud-pilot questions --repo acme\/app --pr 7/);
+  const lines = [];
+  assert.equal(await runQuestions(['--repo', REPO, '--pr', '7'], { api: gh.api, out: (l) => lines.push(l), loadPublicKey: () => KEYS.publicKey, now: () => T0 + 3 * MIN }), 0);
+  assert.equal(JSON.parse(lines[0]).questions.length, 1);
+  assert.equal(await runQuestions(['--repo', REPO], { out: (l) => lines.push(l) }), 1);
 });

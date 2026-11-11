@@ -64,6 +64,7 @@ cloud-pilot wait                                         # in the background: re
 | `wait [--max-min 240]` | Wait for this session's events; one JSON line |
 | `status [--json]`, `untrack --id`, `stop`, `doctor` | What is tracked; stop tracking; stop the hub; check the machine |
 | `channel setup <repo> --write`, `channel keygen` | Let a repo's cloud sessions ask you questions ([channel/README.md](channel/README.md)) |
+| `questions --repo --pr [--all]` | List a PR's open questions with the `question_sha256` that `answer` needs |
 | `answer --repo --pr --id --question-sha256 --answer` | Answer a question with a signed comment |
 
 In a session, `/pilot` shows what is tracked, `/pilot doctor` checks the machine.
@@ -82,6 +83,8 @@ Environment variables (for example in the `env` block of `~/.claude/settings.jso
 | `CLOUD_PILOT_ASK_PUBLIC_KEY`, `CLOUD_PILOT_ASK_KEY_FINGERPRINT` | Public key (and pin) the hub uses to tell answered questions from open ones |
 | `CLOUD_PILOT_CLAUDE_BIN` | The `claude` executable, when it is not on `PATH` |
 | `CLOUD_PILOT_PERMISSION_MODE` | Permission mode `start` gives new cloud sessions: `auto`, `acceptEdits` or `plan` (`--permission-mode` overrides it). Cloud sessions have no bypass mode |
+| `CLOUD_PILOT_MODEL`, `CLOUD_PILOT_EFFORT` | Lead model and effort `start` gives new cloud sessions (`--model`, `--effort` override them); unset, the account's default model |
+| `CLOUD_PILOT_DENY_MODELS` | Comma list of words a cloud session's model must not contain (`opus,fable`); with it set, `start` requires a model |
 | `CLOUD_PILOT_RELEASE_BRANCHES`, `CLOUD_PILOT_RELEASE_PATHS` | Release check of `track-repo --release-tree` |
 
 The older `KIT_HUB_*` names (from kit-cloud 1.x) still work. More in [hub/README.md](hub/README.md).

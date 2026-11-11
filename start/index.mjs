@@ -3,7 +3,8 @@
 // (the cloud session keeps running), registers the session with the cloud-pilot hub, and prints one JSON line.
 //
 //   node start/index.mjs [--cwd <repo>] (--brief-file <file> | --brief "<text>") [--branch claude/<slug>]
-//                        [--title "<text>"] [--timeout <sec>] [--permission-mode <m>] [--no-track] [--help]
+//                        [--title "<text>"] [--timeout <sec>] [--permission-mode <m>]
+//                        [--model <m>] [--effort <e>] [--no-track] [--help]
 //
 // `claude --cloud <brief>` takes the brief as a command-line argument, so it is visible in the process list while the
 // client runs: never put secrets in a brief.
@@ -14,7 +15,7 @@ import { addTrack, ensureHub, caller, accountName } from '../hub/hub.mjs';
 import { paths, hubDir } from '../hub/lib/store.mjs';
 import { setting } from '../hub/lib/config.mjs';
 import {
-  MAX_BRIEF, StartError, USAGE, analyze, checkBranch, checkBrief, checkMode, claudeArgv, detectBranch, isLocalOnly, makeTitle,
+  MAX_BRIEF, StartError, USAGE, analyze, checkBranch, checkBrief, checkDenied, checkEffort, checkMode, checkModel, claudeArgv, detectBranch, isLocalOnly, makeTitle,
   parseArgs, promptError, resolveClaude, tailOf,
 } from './lib.mjs';
 import { childExit, helperFailure, preparePython, startPty } from './runner.mjs';
@@ -127,8 +128,12 @@ export async function main(argv, opts = {}) {
     if (claude.error) throw new StartError(claude.error);
     const envMode = setting('PERMISSION_MODE', env);
     const mode = args.permissionMode ?? (envMode ? checkMode(envMode) : undefined);
+    const envModel = setting('MODEL', env);
+    const model = checkDenied(args.model ?? (envModel ? checkModel(envModel) : undefined), setting('DENY_MODELS', env));
+    const envEffort = setting('EFFORT', env);
+    const effort = args.effort ?? (envEffort ? checkEffort(envEffort) : undefined);
 
-    handle = await (opts.start ?? defaultStart)({ argv: claudeArgv(claude.prefix, brief, mode), cwd, env });
+    handle = await (opts.start ?? defaultStart)({ argv: claudeArgv(claude.prefix, brief, mode, { model, effort }), cwd, env });
     const res = await collect(handle, { brief, timeoutMs: args.timeoutSec * 1000, settleMs: opts.settleMs ?? SETTLE_MS });
     const explain = handle.explain;
     await handle.stop();

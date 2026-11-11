@@ -66,6 +66,24 @@ describe('a successful start', () => {
     assert.match(r3.json.error, /no bypass mode/);
   });
 
+  test('model and effort: the flags, else CLOUD_PILOT_MODEL / CLOUD_PILOT_EFFORT; CLOUD_PILOT_DENY_MODELS refuses', { skip: !hasGit && 'git is not installed' }, async () => {
+    const env = { CLOUD_PILOT_MODEL: 'sonnet', CLOUD_PILOT_EFFORT: 'high', CLOUD_PILOT_DENY_MODELS: 'opus,fable' };
+    const s = setup({ env });
+    assert.equal((await run(main, ['--cwd', s.repo, '--brief', 'Do it'], s.opts)).code, 0);
+    assert.deepEqual(started(s).args, ['--model', 'sonnet', '--effort', 'high', '--cloud', 'Do it']);
+    const s2 = setup({ env });
+    await run(main, ['--cwd', s2.repo, '--brief', 'Do it', '--model', 'haiku', '--effort', 'medium'], s2.opts);
+    assert.deepEqual(started(s2).args, ['--model', 'haiku', '--effort', 'medium', '--cloud', 'Do it']);
+    const s3 = setup({ env });
+    const r3 = await run(main, ['--cwd', s3.repo, '--brief', 'Do it', '--model', 'opus'], s3.opts);
+    assert.equal(r3.code, 1);
+    assert.match(r3.json.error, /denied/);
+    const s4 = setup({ env: { CLOUD_PILOT_DENY_MODELS: 'opus' } });
+    const r4 = await run(main, ['--cwd', s4.repo, '--brief', 'Do it'], s4.opts);
+    assert.equal(r4.code, 1);
+    assert.match(r4.json.error, /give the session a model/);
+  });
+
   test('claude runs in --cwd, with the caller environment', { skip: !hasGit && 'git is not installed' }, async () => {
     const s = setup();
     await run(main, ['--cwd', s.repo, '--brief', 'Do it'], s.opts);

@@ -356,3 +356,71 @@ test('#16 a PR with a pending ask has its comments re-read even when updated_at 
   snapshot(api, REPO, [track()], { nowMs: T0 + 32 * MIN, prev: s1b });
   assert.equal(calls, 2, 're-read because an ask is pending');
 });
+
+// A PR closed without GitHub's merge while its head was merged locally and pushed to the base branch (the branch deleted
+// first, which is what closed the PR): reported as merged (landed), never closed; the cleanup never deletes for a close.
+const closedPr = (over = {}) => ghPr({ state: 'closed', closed_at: iso(T0 + 40 * MIN), updated_at: iso(T0 + 40 * MIN), base: { ref: 'main' }, ...over });
+
+test('#13 a PR closed unmerged whose head lands in main within the grace: one merged event (landed), no closed', () => {
+  const { p, done } = tmpHub();
+  addTrack(p, { kind: 'branch', repo: REPO, branch: 'claude/hud', url: 'u' }, owner, T0);
+  let status = 'diverged';
+  const api = fakeApi({
+    [`repos/${REPO}/pulls?state=all&per_page=50`]: [closedPr()],
+    [`repos/${REPO}/compare/main...abc123def456`]: () => ({ status }),
+  }, { tip: () => '' });
+  pollOnce(p, { api, nowMs: T0 + 41 * MIN, aliveFn: (pid) => pid === 11, notify: () => {}, cleanup: true });
+  let t = readJson(p.tracked, [])[0];
+  assert.equal(t.active, true, 'still waiting for the push to main');
+  assert.match(t.view.detail, /checking whether it landed/);
+  assert.equal(takeReady(p, 'S1', { nowMs: T0 + 41 * MIN }), null, 'no closed event while it may still land');
+  status = 'behind';
+  pollOnce(p, { api, nowMs: T0 + 43 * MIN, aliveFn: (pid) => pid === 11, notify: () => {}, cleanup: true });
+  t = readJson(p.tracked, [])[0];
+  assert.equal(t.active, false);
+  const evs = takeReady(p, 'S1', { nowMs: T0 + 43 * MIN }).filter((e) => e.kind !== 'pr-opened');
+  assert.deepEqual(evs.map((e) => e.kind), ['merged']);
+  assert.equal(evs[0].landed, true);
+  assert.equal(evs[0].merged_sha, null);
+  assert.deepEqual(api.deleted, [], 'the branch is already gone (tip is not the head): nothing deleted');
+  done();
+});
+
+test('#13 a PR closed unmerged that never lands: closed after the grace, and its branch is never deleted', () => {
+  const { p, done } = tmpHub();
+  addTrack(p, { kind: 'branch', repo: REPO, branch: 'claude/hud', url: 'u' }, owner, T0);
+  const api = fakeApi({
+    [`repos/${REPO}/pulls?state=all&per_page=50`]: [closedPr()],
+    [`repos/${REPO}/compare/main...abc123def456`]: { status: 'diverged' },
+  }, { tip: () => 'abc123def456' });
+  pollOnce(p, { api, nowMs: T0 + 41 * MIN, aliveFn: (pid) => pid === 11, notify: () => {}, cleanup: true });
+  pollOnce(p, { api, nowMs: T0 + 60 * MIN, aliveFn: (pid) => pid === 11, notify: () => {}, cleanup: true });
+  assert.equal(readJson(p.tracked, [])[0].active, false);
+  assert.deepEqual(takeReady(p, 'S1', { nowMs: T0 + 60 * MIN }).map((e) => e.kind), ['pr-opened', 'closed']);
+  assert.deepEqual(api.deleted, []);
+  const compares = api.calls.filter((c) => c.includes('/compare/')).length;
+  snapshot(api, REPO, [track()], { nowMs: T0 + 90 * MIN, prev: snapshot(api, REPO, [track()], { nowMs: T0 + 80 * MIN }) });
+  assert.equal(api.calls.filter((c) => c.includes('/compare/')).length, compares + 1, 'a final answer is kept, not read again');
+  done();
+});
+
+test('#13 a repo track: open, then closed and landed, reports merged (landed) and no closed', () => {
+  const t = track({ kind: 'repo', branch: '', memo: { baselined: true } });
+  let pulls = [ghPr()];
+  let status = 'diverged';
+  const api = fakeApi({
+    [`repos/${REPO}/pulls?state=all&per_page=50`]: () => pulls,
+    [`repos/${REPO}/issues/7/comments`]: [],
+    [`repos/${REPO}/commits/`]: { check_runs: [] },
+    [`repos/${REPO}/compare/main...abc123def456`]: () => ({ status }),
+  });
+  const s1 = snapshot(api, REPO, [t], { nowMs: T0 + 30 * MIN });
+  pulls = [closedPr()];
+  const s2 = snapshot(api, REPO, [t], { nowMs: T0 + 41 * MIN, prev: s1 });
+  assert.deepEqual(trackEvents(t, s1, s2, T0 + 41 * MIN).events.map((e) => e.kind), [], 'closing: nothing yet');
+  status = 'identical';
+  const s3 = snapshot(api, REPO, [t], { nowMs: T0 + 43 * MIN, prev: s2 });
+  const evs = trackEvents(t, s2, s3, T0 + 43 * MIN).events;
+  assert.deepEqual(evs.map((e) => e.kind), ['merged']);
+  assert.equal(evs[0].landed, true);
+});

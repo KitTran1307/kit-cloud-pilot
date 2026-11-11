@@ -95,9 +95,12 @@ function branchTrack(track, now, nowMs) {
     events.push(ev(track, 'pr-opened', { pr: pr.number, pr_url: pr.url, ...(pr.title ? { untrusted_title: pr.title } : {}) }));
   }
   if (pr?.merged) {
-    events.push(ev(track, 'merged', { pr: pr.number, pr_url: pr.url, merged_sha: pr.mergedSha, head_sha: pr.headSha }, true));
+    events.push(ev(track, 'merged', { pr: pr.number, pr_url: pr.url, merged_sha: pr.mergedSha, head_sha: pr.headSha, ...(pr.landed ? { landed: true } : {}) }, true));
     active = false;
-    view = { state: 'done', detail: `merged #${pr.number}` };
+    view = { state: 'done', detail: pr.landed ? `#${pr.number} landed in ${pr.baseRef || 'its base'} (closed, merged outside GitHub)` : `merged #${pr.number}` };
+  } else if (pr && closing(pr)) {
+    // Closed unmerged just now: the head may still be pushed into the base branch by hand (see landedCheck). Wait.
+    view = { state: 'pr', detail: `PR #${pr.number} closed · checking whether it landed` };
   } else if (pr && pr.state === 'closed') {
     events.push(ev(track, 'closed', { pr: pr.number, pr_url: pr.url }, true));
     active = false;
@@ -130,6 +133,11 @@ function branchTrack(track, now, nowMs) {
   return { events, memo, active, view: { ...view, lastActivityMs: last, pr: pr?.number, prUrl: pr?.url, ci: pr?.ci } };
 }
 
+// A PR closed without a merge whose landed check (poll.mjs landedCheck) is not final yet.
+const closing = (p) => p.state === 'closed' && !p.merged && p.landedFinal === false;
+// The state a repo track reports: merged (or landed), closed, open, or closing (closed, landed check still running).
+const settled = (p) => (p.merged ? 'merged' : closing(p) ? 'closing' : p.state);
+
 function repoTrack(track, prev, now, nowMs) {
   const memo = { ...(track.memo ?? {}) };
   const events = [];
@@ -150,8 +158,10 @@ function repoTrack(track, prev, now, nowMs) {
       events.push(ev(track, 'opened', { ...base, untrusted_title: p.title, untrusted_text: p.flag }, URGENT_TEXT.test(p.flag)));
       continue;
     }
-    if (p.merged && !b.merged) events.push(ev(track, 'merged', base));
-    else if (p.state !== b.state) events.push(ev(track, p.state === 'closed' ? 'closed' : 'reopened', base, p.state === 'closed'));
+    const pe = settled(p);
+    const be = settled(b);
+    if (pe === 'merged' && be !== 'merged') events.push(ev(track, 'merged', { ...base, ...(p.landed ? { landed: true } : {}) }));
+    else if (pe !== 'closing' && pe !== be && !(be === 'closing' && pe === 'open')) events.push(ev(track, pe === 'closed' ? 'closed' : 'reopened', base, pe === 'closed'));
     if ((p.comments ?? 0) > (b.comments ?? 0)) {
       // Only the PR author (or the track's ask authors) can make a comment urgent or have its text passed on.
       const who = String(p.lastCommentAuthor ?? '').toLowerCase();

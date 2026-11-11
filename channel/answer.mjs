@@ -16,14 +16,15 @@
 // script, so a signed answer is never approval for money, production, deleting data or legal statements. Signs with the private
 // key from keys.mjs (CLOUD_PILOT_KEY_DIR or CLOUD_PILOT_PRIVATE_KEY) and posts through the local gh.
 // Prints the gh account in use (switch with `gh auth switch --user <account>` first); never prints key material.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   ghApi, listComments, listAsks, listCompareFiles, prInfo, forkRefusal, parseAuthorList, askAuthorsFromEnv, isAgentConfigPath, stripHidden,
-  buildAnswerPayload, buildAnswerBody, ID_RE, REPO_RE, MAX_ANSWER_CHARS,
+  buildAnswerPayload, buildAnswerBody, hasValidAnswer, ID_RE, REPO_RE, MAX_ANSWER_CHARS,
 } from './cloud/channel.mjs';
-import { loadLocalPrivateKey } from './keys.mjs';
+import { loadLocalPrivateKey, localPublicKeyPem } from './keys.mjs';
 
 const FLAGS = ['repo', 'pr', 'id', 'answer', 'valid-hours', 'question-sha256', 'ask-authors'];
 
@@ -94,7 +95,9 @@ export async function answer(opts, { api = ghApi, privateKey, now = Date.now } =
   const ask = listAsks(comments, { authors }).find((a) => a.id === opts.id);
   if (!ask) throw new Error(`no channel ask "${opts.id}" by an allowed author on ${opts.repo}#${opts.pr}`);
   if (ask.edited) throw new Error('the ask comment was edited after it was posted; refusing to answer it');
-  if (ask.questionSha256 !== opts.questionSha256) throw new Error('the question text does not match --question-sha256; read it again');
+  if (ask.questionSha256 !== opts.questionSha256) {
+    throw new Error(`the question text does not match --question-sha256; read it again with: cloud-pilot questions --repo ${opts.repo} --pr ${opts.pr}`);
+  }
   const payload = buildAnswerPayload({
     repo: opts.repo, pr: opts.pr, id: opts.id, askCommentId: ask.commentId, questionSha256: ask.questionSha256, headSha: info.headSha, answer: opts.answer,
     issuedAt: new Date(now()).toISOString(), validHours: opts.validHours,
@@ -110,6 +113,71 @@ export async function answer(opts, { api = ghApi, privateKey, now = Date.now } =
   if (latest.headSha !== info.headSha) throw new Error('PR changed while answering; run again');
   const posted = await api(`repos/${opts.repo}/issues/${opts.pr}/comments`, { body: buildAnswerBody({ privateKey, payload }) });
   return { status: 'posted', ...shown, comment_url: posted?.html_url ?? null };
+}
+
+// ---- questions: the asks on a PR, with the hash `answer` needs ------------------------------------------------------------
+
+export const QUESTIONS_HELP = [
+  'usage: questions --repo owner/name --pr N [--ask-authors login,login] [--all]',
+  '  Lists the channel questions on a PR as GitHub has them now: id, question_sha256 (what answer --question-sha256 takes),',
+  '  the question text, its author, whether it was edited and whether it already has a signed answer. Use it when the',
+  '  hub event with the hash is lost (the waiter died). Read untrusted_question before you answer it. Posts nothing.',
+  '  --all          also list questions that already have a signed answer (default: only open ones)',
+  '  --ask-authors  who may have asked (default: the PR author; env CLOUD_PILOT_ASK_AUTHORS)',
+].join('\n');
+
+export function parseQuestionsArgs(argv, env = process.env) {
+  const raw = {};
+  let all = false;
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--all') { all = true; continue; }
+    const key = argv[i]?.replace(/^--/, '');
+    if (!argv[i]?.startsWith('--') || argv[i + 1] === undefined) throw new Error(`bad argument near "${argv[i] ?? ''}"`);
+    if (!['repo', 'pr', 'ask-authors'].includes(key)) throw new Error(`unknown option --${key}`);
+    raw[key] = argv[i + 1];
+    i += 1;
+  }
+  if (!REPO_RE.test(raw.repo ?? '')) throw new Error('--repo must look like owner/name');
+  if (!/^[1-9]\d{0,8}$/.test(raw.pr ?? '')) throw new Error('--pr must be a PR number');
+  return {
+    repo: raw.repo, pr: Number(raw.pr), all,
+    askAuthors: raw['ask-authors'] === undefined ? askAuthorsFromEnv(env) : parseAuthorList(raw['ask-authors']),
+  };
+}
+
+// The asks by allowed authors on the PR. `publicKey` (your own) tells which already have a signed answer; without it
+// `answered` is null and every ask is listed. The text is the PR comment's, so it stays untrusted.
+export async function questions(opts, { api = ghApi, publicKey = null, now = Date.now } = {}) {
+  const info = await prInfo(api, opts.repo, opts.pr);
+  const comments = await listComments(api, opts.repo, opts.pr);
+  const authors = opts.askAuthors ?? info.authors;
+  const ctx = { repo: opts.repo, pr: opts.pr, nowMs: now(), publicKey };
+  const list = listAsks(comments, { authors }).map((a) => ({
+    id: a.id, question_sha256: a.questionSha256, untrusted_question: stripHidden(a.text), author: a.author, edited: a.edited,
+    answered: publicKey ? hasValidAnswer(comments, a, ctx) : null, ask_comment_id: a.commentId, url: a.url,
+  }));
+  return {
+    status: 'ok', repo: opts.repo, pr: opts.pr, head_sha: info.headSha,
+    questions: opts.all ? list : list.filter((q) => q.answered !== true),
+    ...(publicKey ? {} : { note: 'no local public key: answered is unknown, every question is listed' }),
+  };
+}
+
+export async function runQuestions(argv, {
+  env = process.env, out = (line) => console.log(line), api = ghApi, now = Date.now,
+  loadPublicKey = () => crypto.createPublicKey(localPublicKeyPem(env)),
+} = {}) {
+  if (argv.includes('--help') || argv.includes('-h')) { out(QUESTIONS_HELP); return 0; }
+  try {
+    const opts = parseQuestionsArgs(argv, env);
+    let publicKey = null;
+    try { publicKey = loadPublicKey(); } catch { /* no key yet: answered stays unknown */ }
+    out(JSON.stringify(await questions(opts, { api, publicKey, now })));
+    return 0;
+  } catch (err) {
+    out(JSON.stringify({ status: 'error', message: err.message }));
+    return 1;
+  }
 }
 
 function ghAccount() {

@@ -12,6 +12,9 @@ export const TITLE_MAX = 200;
 export const BRANCH_RE = /^claude\/[\w./-]+$/; // the hub's rule for a tracked branch
 // Permission modes a cloud session offers (code.claude.com/docs/en/permission-modes: "Bypass permissions isn't available").
 export const CLOUD_MODES = ['auto', 'acceptEdits', 'plan'];
+// Effort levels claude accepts for --effort.
+export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const MODEL_RE = /^[A-Za-z0-9][\w.:\[\]-]{0,99}$/; // an alias (sonnet) or a full model name (claude-sonnet-5-5[1m])
 
 // An error whose message is meant for the person running the tool. `extra` fields (tail, prompt) go into the JSON.
 export class StartError extends Error {
@@ -35,18 +38,22 @@ Usage: node start/index.mjs [--cwd <repo>] (--brief-file <file> | --brief "<text
   --timeout <sec>         how long to wait for the session URL (default ${DEFAULT_TIMEOUT_SEC}, max ${MAX_TIMEOUT_SEC})
   --permission-mode <m>   the session's permission mode: ${CLOUD_MODES.join(', ')} (default: CLOUD_PILOT_PERMISSION_MODE,
                           else claude's own default). Cloud sessions have no bypassPermissions mode.
+  --model <m>             the session's lead model: an alias (sonnet, haiku) or a full model name (default:
+                          CLOUD_PILOT_MODEL, else the model this claude would start with)
+  --effort <e>            the session's effort level: ${EFFORTS.join(', ')} (default: CLOUD_PILOT_EFFORT)
   --no-track              do not register the session with the cloud-pilot hub
   --help                  this text
 
 The brief is at most ${MAX_BRIEF} characters. Prints one JSON line:
   {"ok":true,"session_id":"...","url":"...","account_dir":"...","hub":{"id":"..."}}
   {"ok":false,"error":"...","tail":"..."}     (exit code 1)
-Environment: CLOUD_PILOT_CLAUDE_BIN, CLOUD_PILOT_LOCAL_ONLY, CLOUD_PILOT_PERMISSION_MODE, CLOUD_PILOT_PYTHON, CLOUD_PILOT_DIR.
+Environment: CLOUD_PILOT_CLAUDE_BIN, CLOUD_PILOT_LOCAL_ONLY, CLOUD_PILOT_PERMISSION_MODE, CLOUD_PILOT_MODEL,
+CLOUD_PILOT_EFFORT, CLOUD_PILOT_DENY_MODELS, CLOUD_PILOT_PYTHON, CLOUD_PILOT_DIR.
 `;
 
 // ---- arguments ------------------------------------------------------------------------------------------------------
 
-const VALUE_FLAGS = new Set(['cwd', 'brief', 'brief-file', 'branch', 'title', 'timeout', 'permission-mode']);
+const VALUE_FLAGS = new Set(['cwd', 'brief', 'brief-file', 'branch', 'title', 'timeout', 'permission-mode', 'model', 'effort']);
 const BOOL_FLAGS = new Set(['no-track', 'help']);
 
 // A value flag always takes the next argument as its value, even one that starts with "--" (a brief "--- notes").
@@ -79,6 +86,8 @@ export function parseArgs(argv) {
   }
   if (raw.cwd === '') throw new StartError('usage: --cwd must not be empty');
   if (raw['permission-mode'] !== undefined) checkMode(raw['permission-mode']);
+  if (raw.model !== undefined) checkModel(raw.model);
+  if (raw.effort !== undefined) checkEffort(raw.effort);
   return {
     help: false,
     cwd: raw.cwd,
@@ -89,7 +98,30 @@ export function parseArgs(argv) {
     timeoutSec,
     track: raw['no-track'] !== true,
     permissionMode: raw['permission-mode'],
+    model: raw.model,
+    effort: raw.effort,
   };
+}
+
+export function checkModel(model) {
+  if (MODEL_RE.test(model)) return model;
+  throw new StartError('usage: --model must be a model alias (sonnet, haiku) or a full model name');
+}
+
+export function checkEffort(effort) {
+  if (EFFORTS.includes(effort)) return effort;
+  throw new StartError(`usage: --effort must be one of ${EFFORTS.join(', ')}`);
+}
+
+// CLOUD_PILOT_DENY_MODELS: comma list of words (opus,fable) a cloud session's model must not contain. With a deny list
+// a start must name its model (flag or CLOUD_PILOT_MODEL): the account's default model may be one of the denied ones.
+export function checkDenied(model, denyValue) {
+  const deny = String(denyValue ?? '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
+  if (!deny.length) return model;
+  if (!model) throw new StartError(`CLOUD_PILOT_DENY_MODELS is set (${deny.join(', ')}): give the session a model with --model or CLOUD_PILOT_MODEL`);
+  const hit = deny.find((w) => model.toLowerCase().includes(w));
+  if (hit) throw new StartError(`model ${model} is denied for cloud sessions (CLOUD_PILOT_DENY_MODELS: ${deny.join(', ')})`);
+  return model;
 }
 
 // A mode the cloud session honours; bypassPermissions/dontAsk are refused, since the cloud drops them silently.
@@ -114,8 +146,15 @@ export function briefArg(brief) {
   return brief.startsWith('-') ? ` ${brief}` : brief;
 }
 
-export function claudeArgv(prefix, brief, mode) {
-  return [...prefix, ...(mode ? ['--permission-mode', mode] : []), '--cloud', briefArg(brief)];
+// claude --cloud sends --model and --effort with the new session (session_context.model / effort_level).
+export function claudeArgv(prefix, brief, mode, { model, effort } = {}) {
+  return [
+    ...prefix,
+    ...(mode ? ['--permission-mode', mode] : []),
+    ...(model ? ['--model', model] : []),
+    ...(effort ? ['--effort', effort] : []),
+    '--cloud', briefArg(brief),
+  ];
 }
 
 // ---- branch and title -----------------------------------------------------------------------------------------------

@@ -34,6 +34,10 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
 - Branch session events: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `question`, `question_unanswerable`
   (an ask edited after it was reported), `question_stale` (see below), `stalled` (1 h quiet),
   `abandoned` (4 h quiet with no PR; 72 h with a PR waiting), `error` (3 failed rounds in a row, reported once).
+- A PR closed without GitHub's merge whose head commit is in its base branch (merged locally and pushed) is reported as
+  `merged` with `landed: true` and `merged_sha: null`. The hub waits up to 15 min after the close for that push before
+  it reports `closed`. The merged-branch cleanup (`deleteMerged`) only ever deletes a branch after a `merged` event, and
+  only while its tip is still the merged head.
 - A started session's track adopts the branch the session really pushes, `claude/<slug>-<random>`, when its own
   `claude/<slug>` never appears (within 4 h; the newest such branch no other track owns): no false `stalled`, and the
   track's own settings (branch deletion included) apply to it. In a shared repository a teammate's branch with the same
