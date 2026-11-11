@@ -1,0 +1,21 @@
+name: pull-requests
+
+# This repository only holds releases (see CONTRIBUTING.md): pull requests are thanked and closed. No code from the
+# pull request is checked out or run.
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr close "$PR" -R "$REPO" --comment "Thank you! This repository only publishes releases, so pull requests are not merged here. Please open an issue describing the change instead (see CONTRIBUTING.md)."

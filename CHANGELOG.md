@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- This repository now holds releases only: one commit per release, with its notes here and on the Releases page.
+  Pull requests are closed with a pointer to issues (see CONTRIBUTING.md); CI runs on every release.
+
 ## 1.1.0
 
 - **A started session follows the branch it really pushes.** A cloud session told `claude/<slug>` usually pushes
