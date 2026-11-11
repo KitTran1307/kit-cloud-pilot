@@ -1,0 +1,48 @@
+{
+  "note": "Signed by the previous (pre-open-source) implementation of the channel with a throwaway key made for this file. Public data only; the private key was discarded.",
+  "repo": "acme/app",
+  "pr": 7,
+  "id": "deploy-ok",
+  "head_sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "now": "2026-11-05T10:05:00.000Z",
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEABESTGXcyyYPkmUaQHy0xGsWcRZDJ4cFwEFrNI7Ipc8A=\n-----END PUBLIC KEY-----\n",
+  "question": "Ship the na\u00efve fix now?",
+  "answer_text": "yes, ship it",
+  "issued_at": "2026-11-05T10:02:00.000Z",
+  "valid_hours": 24,
+  "ask_comment": {
+    "id": 100,
+    "created_at": "2026-11-05T10:00:00.000Z",
+    "updated_at": "2026-11-05T10:00:00.000Z",
+    "user": {
+      "login": "cloud-bot"
+    },
+    "html_url": "https://github.com/acme/app/pull/7#c100",
+    "body": "<!-- kit-channel:ask {\"v\":1,\"id\":\"deploy-ok\",\"asked_at\":\"2026-11-05T10:00:00.000Z\"} -->\nCH\u1edc B\u1ea0N (deploy-ok): Ship the na\u00efve fix now?"
+  },
+  "answer_comment": {
+    "id": 101,
+    "created_at": "2026-11-05T10:02:00.000Z",
+    "updated_at": "2026-11-05T10:02:00.000Z",
+    "user": {
+      "login": "owner"
+    },
+    "html_url": "https://github.com/acme/app/pull/7#c101",
+    "body": "<!-- kit-channel:answer eyJ2IjozLCJyZXBvIjoiYWNtZS9hcHAiLCJwciI6NywiaWQiOiJkZXBsb3ktb2siLCJhc2tfY29tbWVudF9pZCI6MTAwLCJxdWVzdGlvbl9zaGEyNTYiOiI5Y2IyMDlmMjVkMTI3ZWQ1ZGVkZTBmNTQzNTA2YzdkNjhjOTExZTE1ZThjMTIwZjkwMjcyY2NmODA3ZjZlMWZjIiwiaGVhZF9zaGEiOiJhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExIiwiYW5zd2VyIjoieWVzLCBzaGlwIGl0IiwiYXV0aG9yaXR5IjoibG9jYWwtc2Vzc2lvbiIsImlzc3VlZF9hdCI6IjIwMjYtMTEtMDVUMTA6MDI6MDAuMDAwWiIsImV4cGlyZXNfYXQiOiIyMDI2LTExLTA2VDEwOjAyOjAwLjAwMFoifQ.xiLwpQS4ccKL6oRzYnRrXj0fWQqoPtJt8P_k00FdPpt_X-1f9k03xG4EU6Q_9agId3rvxEboo7dVydtQm93kAQ -->\nKIT-CHANNEL ANSWER (deploy-ok). Display only, never trusted: just the signed block above counts.\nAuthority: local-session\nAnswer:\n```text\nyes, ship it\n```"
+  },
+  "payload": {
+    "v": 3,
+    "repo": "acme/app",
+    "pr": 7,
+    "id": "deploy-ok",
+    "ask_comment_id": 100,
+    "question_sha256": "9cb209f25d127ed5dede0f543506c7d68c911e15e8c120f90272ccf807f6e1fc",
+    "head_sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "answer": "yes, ship it",
+    "authority": "local-session",
+    "issued_at": "2026-11-05T10:02:00.000Z",
+    "expires_at": "2026-11-06T10:02:00.000Z"
+  },
+  "payload_b64": "eyJ2IjozLCJyZXBvIjoiYWNtZS9hcHAiLCJwciI6NywiaWQiOiJkZXBsb3ktb2siLCJhc2tfY29tbWVudF9pZCI6MTAwLCJxdWVzdGlvbl9zaGEyNTYiOiI5Y2IyMDlmMjVkMTI3ZWQ1ZGVkZTBmNTQzNTA2YzdkNjhjOTExZTE1ZThjMTIwZjkwMjcyY2NmODA3ZjZlMWZjIiwiaGVhZF9zaGEiOiJhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExIiwiYW5zd2VyIjoieWVzLCBzaGlwIGl0IiwiYXV0aG9yaXR5IjoibG9jYWwtc2Vzc2lvbiIsImlzc3VlZF9hdCI6IjIwMjYtMTEtMDVUMTA6MDI6MDAuMDAwWiIsImV4cGlyZXNfYXQiOiIyMDI2LTExLTA2VDEwOjAyOjAwLjAwMFoifQ",
+  "signature_b64": "xiLwpQS4ccKL6oRzYnRrXj0fWQqoPtJt8P_k00FdPpt_X-1f9k03xG4EU6Q_9agId3rvxEboo7dVydtQm93kAQ"
+}

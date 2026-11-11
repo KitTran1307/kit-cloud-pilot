@@ -1,0 +1,18 @@
+{
+  "name": "kit-cloud-pilot",
+  "owner": {
+    "name": "Kit Tran",
+    "url": "https://github.com/KitTran1307"
+  },
+  "metadata": {
+    "description": "cloud-pilot: Claude Code CLI runs, tracks and answers its own cloud sessions."
+  },
+  "plugins": [
+    {
+      "name": "kit-cloud-pilot",
+      "source": "./",
+      "description": "Let Claude Code (CLI) run work in Claude Code cloud sessions by itself: start them, track them on GitHub, wait for what they need and answer their questions with a signed reply.",
+      "category": "productivity"
+    }
+  ]
+}
