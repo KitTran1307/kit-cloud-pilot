@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- **The skill names the CLI path itself.** The plugin no longer adds a system-prompt section: on Team and Enterprise
+  accounts Claude Code's built-in security plugin keeps prompt content out of reach of installed plugins, so the
+  section was skipped (with a "prompt.compose hook was skipped" notice) and Claude did not learn the path.
+
 ## 1.2.0
 
 - **`start --model` and `--effort`** pick the cloud session's lead model and effort level (`claude --model <m>

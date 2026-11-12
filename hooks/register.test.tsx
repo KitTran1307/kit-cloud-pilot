@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { cliPath, promptSection } from './register'
+import { cliPath } from './register'
 
 type Seen = { writes: { path: string; text: string }[]; runs: string[][] }
 
@@ -25,12 +25,9 @@ function engine(on: On, env: Record<string, string> = { USERPROFILE: 'C:\\Users\
   return seen
 }
 
-test('the CLI path is the plugin root with forward slashes; the prompt section names it', () => {
+test('the CLI path is the plugin root with forward slashes', () => {
   expect(cliPath('C:\\Users\\ann\\plugins\\kit-cloud-pilot\\')).toBe('C:/Users/ann/plugins/kit-cloud-pilot/bin/cloud-pilot.mjs')
   expect(cliPath('/opt/pilot')).toBe('/opt/pilot/bin/cloud-pilot.mjs')
-  const text = promptSection('/opt/pilot/bin/cloud-pilot.mjs')
-  expect(text).toContain('node "/opt/pilot/bin/cloud-pilot.mjs" <command>')
-  expect(text).toContain('cloud-pilot skill')
 })
 
 test('session start records the install where kit-cloud looks for it', async ($, on) => {
@@ -55,11 +52,10 @@ test('a folder that cannot be written never blocks the session', async ($, on) =
   expect(started.cwd).toBe('/work')
 })
 
-test('the system prompt gains one section after the engine\'s own', async ($, on) => {
+test('the system prompt is left as the engine composes it', async ($, on) => {
   engine(on)
   const out = await $.prompt.compose({ model: 'claude-opus-5-5', promptModel: 'claude-opus-5-5', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never)
-  expect(out.sections.map(s => s.id)).toEqual(['engine:base', 'kit-cloud-pilot:cli'])
-  expect(out.sections[1]?.scope).toBe('session')
+  expect(out.sections.map(s => s.id)).toEqual(['engine:base'])
 })
 
 test('/pilot runs the CLI: status by default, doctor and help; anything else shows usage', async ($, on) => {

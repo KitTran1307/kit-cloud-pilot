@@ -1,6 +1,7 @@
-// kit-cloud-pilot plugin: tells Claude where the cloud-pilot CLI is (one short system-prompt section), records the
-// install for other plugins (kit-cloud's band) in <data dir>/install.json, and adds /pilot. The work itself is done
-// by the CLI (bin/cloud-pilot.mjs) that Claude runs through its shell; the skill (skills/cloud-pilot) says how.
+// kit-cloud-pilot plugin: records the install for other plugins (kit-cloud's band) in <data dir>/install.json and adds
+// /pilot. The work itself is done by the CLI (bin/cloud-pilot.mjs) that Claude runs through its shell; the skill
+// (skills/cloud-pilot) names its path and says how. No system-prompt section: for Team and Enterprise accounts the
+// built-in security plugin keeps prompt content out of reach of installed plugins, so the skill carries the path.
 import type { EngineInterface, Register } from 'claude-code'
 
 export const VERSION = '1.0.0'
@@ -18,15 +19,6 @@ async function dataDir($: EngineInterface): Promise<string> {
 
 export function cliPath(root: string): string {
   return `${trimSlash(root).replace(/\\/g, '/')}/bin/cloud-pilot.mjs`
-}
-
-export function promptSection(cli: string): string {
-  return [
-    'cloud-pilot is installed: it starts Claude Code cloud sessions from this CLI, tracks them on GitHub, waits for',
-    `their events and answers their questions. Its command is: node "${cli}" <command>`,
-    '(start, status, wait, track, watch, doctor, channel, answer; `help` lists them). Before handing work to a cloud',
-    'session, or when the person asks about cloud sessions, load the cloud-pilot skill and follow it.',
-  ].join('\n')
 }
 
 async function runCli($: EngineInterface, args: string[]): Promise<string> {
@@ -48,11 +40,6 @@ export const register: Register = on => {
       }, null, 2) + '\n')
     } catch { /* never block a session from starting */ }
     return next(e)
-  })
-
-  on('prompt.compose', async ($, e, next) => {
-    const composed = await next(e)
-    return { sections: [...composed.sections, { id: 'kit-cloud-pilot:cli', text: promptSection(cliPath($.plugin.root)), scope: 'session' as const }] }
   })
 
   on('command.run', { command: 'pilot' }, async ($, e) => {

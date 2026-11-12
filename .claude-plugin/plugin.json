@@ -1,6 +1,6 @@
 {
   "name": "kit-cloud-pilot",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Let Claude Code (CLI) run work in Claude Code cloud sessions by itself: start them, track them on GitHub, wait for what they need and answer their questions with a signed reply.",
   "author": {
     "name": "Kit Tran",

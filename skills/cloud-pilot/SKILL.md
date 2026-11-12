@@ -5,8 +5,8 @@ description: Use in the Claude Code CLI when work should run in a Claude Code cl
 
 # Cloud sessions with cloud-pilot
 
-The cloud-pilot command is given in your system prompt (`node "<path>/bin/cloud-pilot.mjs" <command>`); below it is
-written `cloud-pilot`. `cloud-pilot doctor` checks Node, the GitHub CLI (`gh`) and its login.
+The cloud-pilot command is `node "${CLAUDE_SKILL_DIR}/../../bin/cloud-pilot.mjs" <command>`; below it is written
+`cloud-pilot`. `cloud-pilot doctor` checks Node, the GitHub CLI (`gh`) and its login.
 
 A cloud session runs on an Anthropic-hosted machine, from the repo's GitHub remote, on the person's own plan: it
 spares this machine, not usage. Results come back through GitHub (a branch and a pull request), never as a reply.
