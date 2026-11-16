@@ -95,7 +95,7 @@ function branchTrack(track, now, nowMs) {
     events.push(ev(track, 'pr-opened', { pr: pr.number, pr_url: pr.url, ...(pr.title ? { untrusted_title: pr.title } : {}) }));
   }
   if (pr?.merged) {
-    events.push(ev(track, 'merged', { pr: pr.number, pr_url: pr.url, merged_sha: pr.mergedSha, head_sha: pr.headSha, ...(pr.landed ? { landed: true } : {}) }, true));
+    events.push(ev(track, 'merged', { pr: pr.number, pr_url: pr.url, merged_sha: pr.mergedSha, head_sha: pr.headSha, base_ref: pr.baseRef, ...(pr.landed ? { landed: true } : {}) }, true));
     active = false;
     view = { state: 'done', detail: pr.landed ? `#${pr.number} landed in ${pr.baseRef || 'its base'} (closed, merged outside GitHub)` : `merged #${pr.number}` };
   } else if (pr && closing(pr)) {

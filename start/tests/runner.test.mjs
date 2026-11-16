@@ -96,8 +96,10 @@ describe('preparePython', () => {
     const flat = exec.calls.map((c) => c.join(' '));
     const venvCall = flat.find((c) => c.includes('-m venv'));
     assert.ok(venvCall.includes(join(dir, 'venv')));
+    assert.match(venvCall, / -I -m venv /); // isolated: a venv.py in the home folder is never loaded
     const pip = flat.find((c) => c.includes('pip'));
-    assert.match(pip, /-m pip install --disable-pip-version-check --quiet pywinpty==3\.1\.2$/);
+    // Isolated, and wheels only: no source build pulling unpinned build tools.
+    assert.match(pip, / -I -m pip install --disable-pip-version-check --quiet --only-binary=:all: pywinpty==3\.1\.2$/);
     assert.ok(flat.indexOf(venvCall) < flat.indexOf(pip));
     assert.equal(existsSync(join(dir, 'venv.lock')), false); // the lock is released
   });

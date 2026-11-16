@@ -36,6 +36,7 @@ function fakeApi(routes) {
     calls, deleted,
     get(path) {
       calls.push(path);
+      if (/^repos\/[^/]+\/[^/]+$/.test(path) && !(path in routes)) return { default_branch: 'main' };
       for (const [prefix, value] of Object.entries(routes)) if (path.startsWith(prefix)) return typeof value === 'function' ? value(path) : value;
       return null;
     },
@@ -47,7 +48,7 @@ function fakeApi(routes) {
 
 const pr = (over = {}) => ({
   number: 7, state: 'open', merged_at: null, merge_commit_sha: null, html_url: `https://github.com/${REPO}/pull/7`, title: 'Fix the parser',
-  body: 'WORKING', user: { login: 'octo' }, head: { ref: 'claude/parser', sha: 'abc123def456', repo: { owner: { login: 'octo' }, full_name: 'octo/demo' } },
+  body: 'WORKING', user: { login: 'octo' }, head: { ref: 'claude/parser', sha: 'abc123def456', repo: { owner: { login: 'octo' }, full_name: 'octo/demo' } }, base: { ref: 'main' },
   created_at: '2026-11-09T07:00:00Z', updated_at: '2026-11-09T07:30:00Z', ...over,
 });
 const ref = (branch) => ({ ref: `refs/heads/${branch}`, object: { sha: `${branch.length}`.padEnd(40, 'a') } });

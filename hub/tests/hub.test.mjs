@@ -32,6 +32,7 @@ function fakeApi(routes) {
     calls, deleted,
     get(path) {
       calls.push(path);
+      if (/^repos\/[^/]+\/[^/]+$/.test(path) && !(path in routes)) return { default_branch: 'main' };
       for (const [prefix, value] of Object.entries(routes)) if (path.startsWith(prefix)) return typeof value === 'function' ? value(path) : value;
       return null;
     },
@@ -42,7 +43,7 @@ function fakeApi(routes) {
 
 const pr = (over = {}) => ({
   number: 7, state: 'open', merged_at: null, merge_commit_sha: null, html_url: `https://github.com/${REPO}/pull/7`, title: 'Fix HUD',
-  body: 'WORKING\nmore', user: { login: 'octo' }, head: { ref: 'claude/hud', sha: 'abc123def456', repo: { owner: { login: 'octo' }, full_name: 'octo/demo' } },
+  body: 'WORKING\nmore', user: { login: 'octo' }, head: { ref: 'claude/hud', sha: 'abc123def456', repo: { owner: { login: 'octo' }, full_name: 'octo/demo' } }, base: { ref: 'main' },
   created_at: '2026-11-09T08:10:00Z', updated_at: '2026-11-09T08:20:00Z', ...over,
 });
 
@@ -69,6 +70,16 @@ test('makeApi: a 304 answers the cached body; 404 is null; other failures throw'
   assert.throws(() => api.get('broken'), /HTTP 500/);
   api.flush();
   assert.equal(readJson(p.etags, {}).x.etag, 'W/"e1"');
+  done();
+});
+
+test('makeApi: a huge answer is used but never cached, so a comment flood cannot bloat the cache file', () => {
+  const { p, done } = tmpHub();
+  const big = JSON.stringify([{ id: 1, body: 'x'.repeat(300 * 1024) }]);
+  const api = makeApi(p.etags, { run: () => ({ out: `HTTP/2.0 200 OK\r\nETag: W/"big"\r\n\r\n${big}` }) });
+  assert.equal(api.get('repos/o/r/issues/7/comments?per_page=100&page=1')[0].id, 1);
+  api.flush();
+  assert.deepEqual(readJson(p.etags, {}), {});
   done();
 });
 

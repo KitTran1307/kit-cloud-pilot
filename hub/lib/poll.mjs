@@ -142,7 +142,9 @@ export function snapshot(api, repo, tracks, { nowMs = Date.now(), publicKey = nu
   // head.repo null for a deleted fork): that one cannot be told from a stranger's.
   const take = (p) => {
     const ref = p.head?.ref ?? '';
-    if (!ref.startsWith('claude/') || headRepoOf(p) !== repoKey) return;
+    // Only a branch name the hub's own rule allows (claude/ + letters, digits, . _ / -, no ..): a name with line or
+    // bidi characters never reaches an event, where it would read like trusted text.
+    if (!/^claude\/[\w./-]+$/.test(ref) || ref.includes('..') || headRepoOf(p) !== repoKey) return;
     if (prs[ref] && toMs(prs[ref].createdAt) > toMs(p.created_at)) return; // newest PR of the branch
     prs[ref] = prFact(p);
   };

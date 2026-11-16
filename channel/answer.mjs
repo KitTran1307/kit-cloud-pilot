@@ -25,6 +25,7 @@ import {
   buildAnswerPayload, buildAnswerBody, hasValidAnswer, ID_RE, REPO_RE, MAX_ANSWER_CHARS,
 } from './cloud/channel.mjs';
 import { loadLocalPrivateKey, localPublicKeyPem } from './keys.mjs';
+import { resolveExe, safeCwd } from '../hub/lib/exe.mjs';
 
 const FLAGS = ['repo', 'pr', 'id', 'answer', 'valid-hours', 'question-sha256', 'ask-authors'];
 
@@ -182,7 +183,8 @@ export async function runQuestions(argv, {
 
 function ghAccount() {
   try {
-    return execFileSync('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 }).trim();
+    // By full path, from the home folder: a gh.exe in the checkout this runs in is never started.
+    return execFileSync(resolveExe('gh'), ['api', 'user', '--jq', '.login'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000, cwd: safeCwd(), windowsHide: true }).trim();
   } catch { return 'unknown (gh not logged in?)'; }
 }
 

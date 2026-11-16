@@ -545,6 +545,10 @@ function cleanupBranch(p, api, repo, branch, merged) {
     const tip = api.tipSha ? api.tipSha(repo, branch) : merged?.head_sha;
     if (!tip) { log(p, `branch ${repo}:${branch} already gone`); return; }
     if (!merged?.head_sha || tip !== merged.head_sha) { log(p, `branch ${repo}:${branch} kept: tip ${tip.slice(0, 9)} is not the merged head ${String(merged?.head_sha).slice(0, 9)}`); return; }
+    // Only a merge into the repository's default branch counts: a PR merged into some other branch (one anyone with
+    // push rights could open) never deletes the person's branch.
+    const defaultBranch = api.get(`repos/${repo}`)?.default_branch;
+    if (!defaultBranch || merged.base_ref !== defaultBranch) { log(p, `branch ${repo}:${branch} kept: merged into ${merged.base_ref || '?'}, not the default branch`); return; }
     api.del(`repos/${repo}/git/refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}`);
     log(p, `deleted merged branch ${repo}:${branch}`);
   } catch (err) {

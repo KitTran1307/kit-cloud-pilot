@@ -156,6 +156,8 @@ try { Add-Type -TypeDefinition $source -Language CSharp } catch {
 if ($env:CLOUD_PILOT_PTY_CHECK -eq '1') { exit [KitConPty]::Check() }
 
 try {
+  # The request is UTF-8 (a Vietnamese brief stays Vietnamese); Windows PowerShell would read it in the OEM code page.
+  [Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
   $req = [Console]::In.ReadLine() | ConvertFrom-Json
   $argv = @($req.argv | ForEach-Object { [string]$_ })
   $cwd = [string]$req.cwd
@@ -170,16 +172,19 @@ try {
 if (-not (Test-Path -LiteralPath $cwd -PathType Container)) { Say "directory not found: $cwd"; exit 4 }
 
 # The full path of the program, as PATH and PATHEXT find it (claude.exe, or a claude.cmd that cmd.exe must run).
-$found = Get-Command -Name $argv[0] -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $found) { Say "cannot start $($argv[0]): not found"; exit 4 }
-$exe = $found.Source
+if ([System.IO.Path]::IsPathRooted($argv[0])) {
+  # A full path is taken as it is (Get-Command would read [ ] in it as wildcards).
+  if (-not (Test-Path -LiteralPath $argv[0] -PathType Leaf)) { Say "cannot start $($argv[0]): not found"; exit 4 }
+  $exe = $argv[0]
+} else {
+  $found = Get-Command -Name $argv[0] -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $found) { Say "cannot start $($argv[0]): not found"; exit 4 }
+  $exe = $found.Source
+}
+# Only a real program, never a batch file: cmd.exe would read & | % in the arguments (the brief) as commands.
+if ($exe -notmatch '\.(exe|com)$') { Say "cannot start ${exe}: only .exe programs are started (no batch files)"; exit 4 }
 $rest = @($argv | Select-Object -Skip 1)
 $argLine = ($rest | ForEach-Object { [KitConPty]::Quote($_) }) -join ' '
-if ($exe -match '\.(cmd|bat)$') {
-  # A batch file (an npm-installed claude.cmd) runs through cmd.exe: /s keeps the inner quotes as they are.
-  $argLine = '/d /s /c "' + (@([KitConPty]::Quote($exe)) + @($argLine) -join ' ').Trim() + '"'
-  $exe = Join-Path $env:SystemRoot 'System32\cmd.exe'
-}
 
 if (-not $env:TERM) { $env:TERM = 'xterm-256color' }
 exit [KitConPty]::Run($exe, [string]$argLine, $cwd, $rows, $cols)

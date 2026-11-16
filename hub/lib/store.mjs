@@ -1,8 +1,19 @@
 // Files the hub and its clients share, under CLOUD_PILOT_DIR (default ~/.claude/cloud-pilot). Writes are atomic (tmp + rename).
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, readdirSync, appendFileSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, readdirSync, appendFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { setting } from './config.mjs';
+
+// Private to the person: the folder 0700, its files 0600 (GitHub bodies of private repos live here). Set on every
+// write, so an install made before this rule is tightened too. Windows: the profile folder is private already.
+const POSIX = process.platform !== 'win32';
+export function privateDir(dir) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (POSIX) try { chmodSync(dir, 0o700); } catch { /* not ours to change */ }
+}
+export function privateFile(file) {
+  if (POSIX) try { chmodSync(file, 0o600); } catch { /* gone, or not ours */ }
+}
 
 export function hubDir(env = process.env) {
   return setting('DIR', env) || join(homedir(), '.claude', 'cloud-pilot');
@@ -54,15 +65,18 @@ export function readJson(file, fallback, { cache = false } = {}) {
 }
 
 export function writeJson(file, value, { backup = false } = {}) {
-  mkdirSync(join(file, '..'), { recursive: true });
+  // Private to the person (folder 0700, files 0600): GitHub bodies of private repos live here. No effect on Windows,
+  // where the profile folder is private already.
+  privateDir(join(file, '..'));
   if (backup && existsSync(file)) {
-    try { JSON.parse(readFileSync(file, 'utf8')); writeFileSync(`${file}.bak`, readFileSync(file)); } catch { /* keep the last good .bak */ }
+    try { JSON.parse(readFileSync(file, 'utf8')); writeFileSync(`${file}.bak`, readFileSync(file), { mode: 0o600 }); privateFile(`${file}.bak`); } catch { /* keep the last good .bak */ }
   }
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tmp, JSON.stringify(value, null, 1));
+  writeFileSync(tmp, JSON.stringify(value, null, 1), { mode: 0o600 });
   for (let i = 0; ; i += 1) {
     try {
       renameSync(tmp, file);
+      privateFile(file);
       return;
     } catch (err) {
       // Windows: a reader holding the file makes rename fail for a moment.
@@ -83,9 +97,10 @@ export function remove(file) {
 
 export function log(p, line) {
   try {
-    mkdirSync(p.dir, { recursive: true });
+    privateDir(p.dir);
     if (existsSync(p.log) && statSync(p.log).size > 2_000_000) renameSync(p.log, `${p.log}.1`);
-    appendFileSync(p.log, `${new Date().toISOString()} ${line}\n`);
+    appendFileSync(p.log, `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
+    privateFile(p.log);
   } catch {
     // logging never breaks the hub
   }
@@ -93,7 +108,7 @@ export function log(p, line) {
 
 // A short exclusive section around read-modify-write of tracked.json / queues (mkdir is atomic on Windows too).
 export function withLock(p, fn) {
-  mkdirSync(p.dir, { recursive: true });
+  privateDir(p.dir);
   const started = Date.now();
   for (;;) {
     try {

@@ -8,11 +8,11 @@
 //
 // `claude --cloud <brief>` takes the brief as a command-line argument, so it is visible in the process list while the
 // client runs: never put secrets in a brief.
-import { appendFileSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { appendFileSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addTrack, ensureHub, caller, accountName } from '../hub/hub.mjs';
-import { paths, hubDir } from '../hub/lib/store.mjs';
+import { paths, hubDir, privateDir, privateFile } from '../hub/lib/store.mjs';
 import { setting } from '../hub/lib/config.mjs';
 import {
   MAX_BRIEF, StartError, USAGE, analyze, checkBranch, checkBrief, checkDenied, checkEffort, checkMode, checkModel, claudeArgv, detectBranch, isLocalOnly, makeTitle,
@@ -100,8 +100,9 @@ function track({ args, env, cwd, me, url, title, branch, p, spawnHub }) {
 // One line per start, never the brief.
 function logStart(p, row) {
   try {
-    mkdirSync(p.dir, { recursive: true });
-    appendFileSync(join(p.dir, 'sessions.jsonl'), `${JSON.stringify(row)}\n`);
+    privateDir(p.dir);
+    appendFileSync(join(p.dir, 'sessions.jsonl'), `${JSON.stringify(row)}\n`, { mode: 0o600 });
+    privateFile(join(p.dir, 'sessions.jsonl'));
   } catch { /* the log never breaks a start */ }
 }
 

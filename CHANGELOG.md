@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.1
+
+Security fixes from a full review. Update is recommended.
+
+- **No program from the repository folder.** `answer`, `questions` and the `channel` commands started `gh` by its bare
+  name from the current folder, so on Windows a `gh.exe` inside a checkout could have run with your login. They now
+  start it by its full path from your home folder, as the rest of the tool already did; a test covers every program
+  the tool starts.
+- **Branch names stay plain.** A repository track ignores pull requests whose branch name breaks the `claude/…` rule,
+  so line-break or right-to-left characters in a name never reach the events Claude reads.
+- **Merged-branch cleanup is stricter** (only with `CLOUD_PILOT_DELETE_MERGED=1`): a branch is deleted only after a
+  merge into the repository's default branch.
+- **Private files.** On macOS and Linux the data folder is now `0700` and its files `0600`, existing installs included.
+- **Bounded cache.** Very large GitHub answers (a flooded comment thread) are no longer kept in the cache file.
+- **Windows terminal helper:** never starts a batch file (whose `&`, `|` or `%` in a brief cmd.exe would run),
+  takes Windows PowerShell from its system folder, and reads the brief as UTF-8, so Vietnamese and other non-English
+  briefs arrive intact. The Python fallback installs `pywinpty` from wheels only, in isolated mode.
+
 ## 1.3.0
 
 - **No Python needed on Windows.** `cloud-pilot start` now gives `claude --cloud` its terminal through Windows' own

@@ -47,6 +47,7 @@ export function makeTokenFor({ exec = execFileSync, now = Date.now } = {}) {
 
 const ownerOf = (path) => (String(path).match(/^repos\/([^/]+)\//) || [])[1] || '';
 export const ETAG_KEEP_MS = 3 * 24 * 3600_000; // cache entries unused this long are dropped at flush
+export const CACHE_MAX_BODY = 256 * 1024; // larger answers are not kept in the ETag cache
 
 // makeApi(etagFile) -> { get(path, { notFound }) -> parsed JSON, stats }. A 404 answers null, or throws with
 // { notFound: 'throw' } (a repo-level read: 404 there means no access, never "nothing there"). Other failures throw.
@@ -76,7 +77,10 @@ export function makeApi(etagFile, { run = runGh, save = true, tokenFor = () => n
       if (res.status >= 200 && res.status < 300) {
         stats.fetched += 1;
         const body = res.body.trim() ? JSON.parse(res.body) : null;
-        if (res.etag) { cache[path] = { etag: res.etag, body, used: now() }; dirty = true; }
+        // A large answer (say a page of long comments someone flooded a public PR with) is used but not cached, so
+        // the cache file the hub rewrites stays small.
+        if (res.etag && res.body.length <= CACHE_MAX_BODY) { cache[path] = { etag: res.etag, body, used: now() }; dirty = true; }
+        else if (cache[path]) { delete cache[path]; dirty = true; }
         return body;
       }
       throw new Error(`gh api ${path} failed: ${(err || `HTTP ${res.status}`).trim().split('\n')[0]}`);

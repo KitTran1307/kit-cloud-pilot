@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { setting } from '../hub/lib/config.mjs';
-import { resolveExe, safeCwd } from '../hub/lib/exe.mjs';
+import { resolveExe, resolveSystemExe, safeCwd } from '../hub/lib/exe.mjs';
 import { StartError } from './lib.mjs';
 
 export const PTY_SCRIPT = fileURLToPath(new URL('./pty_run.py', import.meta.url));
@@ -114,8 +114,8 @@ export function preparePython({ env = process.env, platform = process.platform, 
       }
       touch();
     };
-    if (!exists(venvPython.cmd)) step('creating the virtual environment', base.cmd, [...base.args, '-m', 'venv', '--clear', venv], 120000);
-    step('installing pywinpty', venvPython.cmd, ['-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', PYWINPTY_SPEC], 600000);
+    if (!exists(venvPython.cmd)) step('creating the virtual environment', base.cmd, [...base.args, '-I', '-m', 'venv', '--clear', venv], 120000);
+    step('installing pywinpty', venvPython.cmd, ['-I', '-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', '--only-binary=:all:', PYWINPTY_SPEC], 600000);
     if (!canPty(venvPython, exec)) throw new StartError(`pywinpty was installed but cannot be imported. ${manual}`);
   });
   return venvPython;
@@ -125,7 +125,7 @@ export function preparePython({ env = process.env, platform = process.platform, 
 // script file). Same protocol as pty_run.py.
 export function conptyHelper(read = readFileSync) {
   const encoded = Buffer.from(read(CONPTY_SCRIPT, 'utf8'), 'utf16le').toString('base64');
-  return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], label: 'Windows PowerShell (ConPTY)' };
+  return { cmd: resolveSystemExe('powershell.exe'), args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], label: 'Windows PowerShell (ConPTY)' };
 }
 
 // Whether ConPTY works here: Windows 10 1809 or later, and PowerShell allowed to compile its small helper.

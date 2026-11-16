@@ -29,6 +29,7 @@ function gh({ refs, pulls = () => [] }) {
     calls, deleted,
     get(path) {
       calls.push(path);
+      if (/^repos\/[^/]+\/[^/]+$/.test(path)) return { default_branch: 'main' };
       const m = path.match(/git\/matching-refs\/heads\/(.*)$/);
       if (m) {
         const prefix = m[1].split('/').map(decodeURIComponent).join('/');
@@ -51,7 +52,7 @@ function gh({ refs, pulls = () => [] }) {
 
 const prOf = (ref, over = {}) => ({
   number: 65, state: 'open', merged_at: null, merge_commit_sha: null, html_url: `https://github.com/${REPO}/pull/65`, title: 't',
-  body: '', user: { login: 'octo' }, head: { ref, sha: `sha-${ref}`, repo: { owner: { login: 'octo' }, full_name: REPO } },
+  body: '', user: { login: 'octo' }, head: { ref, sha: `sha-${ref}`, repo: { owner: { login: 'octo' }, full_name: REPO } }, base: { ref: 'main' },
   created_at: iso(T0 + 20 * MIN), updated_at: iso(T0 + 20 * MIN), ...over,
 });
 

@@ -23,6 +23,7 @@
 // config: the channel never applies). Bad arguments print {status:"usage"} and exit 1.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -334,12 +335,34 @@ export function pendingQuestions(comments, { repo, pr, publicKey, nowMs, afterMs
 
 // ---- GitHub access -----------------------------------------------------------------------------------------------
 
+// This file ships on its own into cloud repositories, so it carries its own copy of the hub's rule (hub/lib/exe.mjs):
+// a program is started by its full path found on PATH (never the current folder, never a relative PATH entry) and
+// from the home folder, so a checkout that holds a gh.exe cannot run it (Windows looks in the current folder first).
+export const safeCwd = () => os.homedir();
+export function resolveExe(name, env = process.env, platform = process.platform) {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const here = p.resolve(process.cwd()).replace(/[\\/]+$/, '');
+  const key = Object.keys(env).find((k) => k.toLowerCase() === 'path');
+  const exts = platform === 'win32' ? ['.exe', '.com'] : [''];
+  for (const raw of String(key ? env[key] : '').split(p.delimiter)) {
+    const dir = raw.replace(/^"|"$/g, '');
+    if (!dir || !p.isAbsolute(dir)) continue;
+    const norm = p.resolve(dir).replace(/[\\/]+$/, '');
+    if (platform === 'win32' ? norm.toLowerCase() === here.toLowerCase() : norm === here) continue;
+    for (const ext of exts) {
+      const full = p.join(dir, name + ext);
+      try { if (fs.statSync(full).isFile()) return full; } catch { /* not here */ }
+    }
+  }
+  return name; // not found: fails as ENOENT, then the GH_TOKEN path below is used
+}
+
 // gh when installed, otherwise fetch with GH_TOKEN. `body` (object) makes it a POST. Never puts the token in a message.
 export async function ghApi(path_, body) {
   try {
     const args = ['api', path_, ...(body ? ['-X', 'POST', '--input', '-'] : [])];
-    const out = execFileSync('gh', args, {
-      encoding: 'utf8', input: body ? JSON.stringify(body) : undefined,
+    const out = execFileSync(resolveExe('gh'), args, {
+      encoding: 'utf8', input: body ? JSON.stringify(body) : undefined, cwd: safeCwd(), windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000, maxBuffer: 64 * 1024 * 1024,
     });
     return out.trim() ? JSON.parse(out) : null;

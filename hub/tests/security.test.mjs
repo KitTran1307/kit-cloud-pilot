@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, readFileSync, statSync, writeFileSync, readdirSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,7 @@ import { parseAsk, questionSha256, staleQuestions } from '../lib/asks.mjs';
 import { findOnPath, resolveExe, resolveSystemExe, safeCwd } from '../lib/exe.mjs';
 import { makeTokenFor } from '../lib/gh.mjs';
 import { toast } from '../lib/notify.mjs';
-import { paths, readJson } from '../lib/store.mjs';
+import { paths, readJson, writeJson } from '../lib/store.mjs';
 import { addTrack, doctor, pollOnce, takeReady, writeState } from '../hub.mjs';
 
 for (const k of Object.keys(process.env)) if (/^(KIT_HUB|CLOUD_PILOT)_/.test(k)) delete process.env[k];
@@ -38,6 +38,7 @@ function fakeApi(routes) {
     calls, deleted: [],
     get(path) {
       calls.push(path);
+      if (/^repos\/[^/]+\/[^/]+$/.test(path) && !(path in routes)) return { default_branch: 'main' };
       for (const [prefix, value] of Object.entries(routes)) if (path.startsWith(prefix)) return typeof value === 'function' ? value(path) : value;
       return null;
     },
@@ -48,7 +49,7 @@ function fakeApi(routes) {
 const SAME_REPO = { owner: { login: 'octo' }, full_name: 'octo/demo' };
 const ghPr = (over = {}) => ({
   number: 7, state: 'open', merged_at: null, merge_commit_sha: null, html_url: `https://github.com/${REPO}/pull/7`, title: 'Fix',
-  body: 'WORKING', user: { login: 'octo' }, head: { ref: 'claude/hud', sha: 'abc123def456', repo: SAME_REPO },
+  body: 'WORKING', user: { login: 'octo' }, head: { ref: 'claude/hud', sha: 'abc123def456', repo: SAME_REPO }, base: { ref: 'main' },
   created_at: iso(T0 + 10 * MIN), updated_at: iso(T0 + 20 * MIN), ...over,
 });
 const headOf = (repo, sha = 'abc123def456', ref = 'claude/hud') => ({ ref, sha, repo });
@@ -356,7 +357,10 @@ test('4: gh, git and the notifier start from the home folder with a resolved pro
 
 test('4: every program the hub starts is given an explicit cwd that is not the current folder', () => {
   const files = [join(HERE, '..', 'hub.mjs'), ...readdirSync(join(HERE, '..', 'lib')).map((f) => join(HERE, '..', 'lib', f)),
-    join(HERE, '..', '..', 'start', 'runner.mjs'), join(HERE, '..', '..', 'start', 'index.mjs'), join(HERE, '..', '..', 'start', 'lib.mjs')].filter((f) => f.endsWith('.mjs'));
+    join(HERE, '..', '..', 'start', 'runner.mjs'), join(HERE, '..', '..', 'start', 'index.mjs'), join(HERE, '..', '..', 'start', 'lib.mjs'),
+    // The answer channel and the CLI start programs too (gh): the same rule holds there.
+    ...['answer.mjs', 'index.mjs', 'keys.mjs', 'setup.mjs'].map((f) => join(HERE, '..', '..', 'channel', f)),
+    join(HERE, '..', '..', 'channel', 'cloud', 'channel.mjs'), join(HERE, '..', '..', 'bin', 'cloud-pilot.mjs')].filter((f) => f.endsWith('.mjs'));
   const calls = [];
   for (const f of files) {
     const src = readFileSync(f, 'utf8');
@@ -384,4 +388,16 @@ test('4: doctor finds gh by PATH even when the current folder holds a gh.exe', {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('hub files are private on macOS and Linux, an existing install included', { skip: process.platform === 'win32' ? 'Windows keeps the profile folder private itself' : false }, () => {
+  const dir = join(tmpdir(), `cloud-pilot-perm-${process.pid}`);
+  mkdirSync(dir, { recursive: true, mode: 0o755 });
+  chmodSync(dir, 0o755);
+  const file = join(dir, 'tracked.json');
+  writeFileSync(file, '[]', { mode: 0o644 });
+  writeJson(file, []);
+  assert.equal(statSync(dir).mode & 0o777, 0o700);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  rmSync(dir, { recursive: true, force: true });
 });
