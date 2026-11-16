@@ -341,14 +341,16 @@ export function pendingQuestions(comments, { repo, pr, publicKey, nowMs, afterMs
 export const safeCwd = () => os.homedir();
 export function resolveExe(name, env = process.env, platform = process.platform) {
   const p = platform === 'win32' ? path.win32 : path.posix;
-  const here = p.resolve(process.cwd()).replace(/[\\/]+$/, '');
+  // The same folder however it is spelled: case on Windows, a trailing slash, links (macOS /var is /private/var).
+  const norm = (d) => { const x = p.resolve(d).replace(/[\\/]+$/, ''); return platform === 'win32' ? x.toLowerCase() : x; };
+  const real = (d) => { try { return norm(fs.realpathSync.native(d)); } catch { return null; } };
+  const here = [norm(process.cwd()), real(process.cwd())];
   const key = Object.keys(env).find((k) => k.toLowerCase() === 'path');
   const exts = platform === 'win32' ? ['.exe', '.com'] : [''];
   for (const raw of String(key ? env[key] : '').split(p.delimiter)) {
     const dir = raw.replace(/^"|"$/g, '');
     if (!dir || !p.isAbsolute(dir)) continue;
-    const norm = p.resolve(dir).replace(/[\\/]+$/, '');
-    if (platform === 'win32' ? norm.toLowerCase() === here.toLowerCase() : norm === here) continue;
+    if (here.includes(norm(dir)) || (real(dir) !== null && here.includes(real(dir)))) continue;
     for (const ext of exts) {
       const full = p.join(dir, name + ext);
       try { if (fs.statSync(full).isFile()) return full; } catch { /* not here */ }

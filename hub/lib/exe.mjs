@@ -3,7 +3,7 @@
 // so a checkout that holds a `gh.exe` or `git.exe` at its root would run it. Two defences, used together:
 //   - resolveExe(name): the full path of `name` found on PATH, skipping relative entries and the current folder;
 //   - safeCwd(): the folder a child process starts in, the home folder, never a repository.
-import { statSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -13,9 +13,14 @@ export const safeCwd = () => homedir();
 const isFile = (f) => { try { return statSync(f).isFile(); } catch { return false; } };
 const isExecutable = (f) => { try { const s = statSync(f); return s.isFile() && (process.platform === 'win32' || (s.mode & 0o111) !== 0); } catch { return false; } };
 
+// The same folder however it is spelled: case on Windows, a trailing slash, and links (macOS /var is /private/var; a
+// junction, a symlink or a \\?\ path on Windows), compared by real path when the folder exists.
 const sameDir = (a, b, p, platform) => {
   const norm = (d) => { const x = p.resolve(d).replace(/[\\/]+$/, ''); return platform === 'win32' ? x.toLowerCase() : x; };
-  return norm(a) === norm(b);
+  const real = (d) => { try { return norm(realpathSync.native(d)); } catch { return null; } };
+  if (norm(a) === norm(b)) return true;
+  const [ra, rb] = [real(a), real(b)];
+  return ra !== null && ra === rb;
 };
 
 /**

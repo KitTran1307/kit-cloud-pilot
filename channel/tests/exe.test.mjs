@@ -20,6 +20,15 @@ test('a gh in the current folder, or on a relative PATH entry, is never the one 
     assert.equal(resolveExe('gh', env), path.join(real, name));
     // Not found anywhere safe: the bare name, which fails as "not found" (then GH_TOKEN is used).
     assert.equal(resolveExe('gh', { PATH: ['.', here].join(path.delimiter) }), 'gh');
+    // The current folder reached through a link (a junction on Windows, a symlink elsewhere; macOS /var is one) is
+    // still the current folder.
+    const link = `${here}-link`;
+    fs.symlinkSync(here, link, 'junction');
+    try {
+      assert.equal(resolveExe('gh', { PATH: [link, real].join(path.delimiter) }), path.join(real, name));
+    } finally {
+      fs.rmSync(link, { recursive: false, force: true });
+    }
   } finally {
     process.chdir(before);
     fs.rmSync(here, { recursive: true, force: true });

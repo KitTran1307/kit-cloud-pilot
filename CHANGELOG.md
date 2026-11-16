@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2
+
+- **The repository folder is recognized behind links too.** When a program is looked up on PATH, the current folder
+  is now skipped even when PATH names it through a link (macOS `/var` is `/private/var`; a junction, symlink or
+  `\\?\` path on Windows). 1.3.1 missed that case on macOS.
+
 ## 1.3.1
 
 Security fixes from a full review. Update is recommended.
