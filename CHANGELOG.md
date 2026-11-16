@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+- **No Python needed on Windows.** `cloud-pilot start` now gives `claude --cloud` its terminal through Windows' own
+  pseudo-console (ConPTY) with the built-in Windows PowerShell, so there is nothing to install and no first-run setup.
+  Python with `pywinpty` is kept only as a fallback for Windows older than 10 1809 (or where PowerShell may not compile
+  the helper), and when `CLOUD_PILOT_PYTHON` is set. macOS and Linux keep using Python's standard `pty` module.
+- **No toast for sessions you never asked to follow.** When GitHub cannot be read, branches the watch found on its own
+  no longer raise an error notification; kit-cloud shows the problem in its band instead.
+
 ## 1.2.2
 
 - **Works with Code Mode.** When Claude Code's Code Mode is on and the account has not yet answered its one-time

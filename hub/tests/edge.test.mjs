@@ -130,6 +130,21 @@ test('#5 a 404 on the PR list is an error (not "gone"); owners hear it after ERR
   done();
 });
 
+test('#5b a branch the watch found by itself gets no error event: its trouble shows in the band only', () => {
+  const { p, done } = tmpHub();
+  addTrack(p, { kind: 'branch', repo: REPO, branch: 'claude/found', url: '', discoveredBy: 'w1' }, owner, T0);
+  const t = readJson(p.tracked, []);
+  t[0].memo = { sawBranch: true };
+  writeJson(p.tracked, t);
+  const api = fakeApi({ [`repos/${REPO}/pulls?`]: 404, [`repos/${REPO}/branches/`]: 404 });
+  for (let i = 0; i < ERROR_STREAK; i += 1) {
+    const res = pollOnce(p, { api, nowMs: T0 + (10 + i * 2) * MIN, aliveFn: (pid) => pid === 11, notify: () => {}, cleanup: true });
+    assert.match(res.errors[REPO], /404/);
+  }
+  assert.equal(takeReady(p, 'S1', { nowMs: T0 + 20 * MIN }), null);
+  done();
+});
+
 test('#6 a tracked branch whose PR is outside the 50-PR window is found by name', () => {
   const api = fakeApi({
     [`repos/${REPO}/pulls?state=all&per_page=50`]: [],

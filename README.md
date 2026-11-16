@@ -26,8 +26,9 @@ Want to *see* the sessions above the prompt? Add the optional band,
 
 - Claude Code CLI with cloud sessions (`claude --cloud`) on your plan.
 - **Node.js 18+** and the **GitHub CLI** `gh`, signed in (`gh auth login`) with access to your repos.
-- **Python 3** for `cloud-pilot start` (it gives `claude --cloud` the terminal it insists on). On Windows it sets up
-  `pywinpty` in its own virtual environment on first use; macOS and Linux need nothing extra.
+- **A terminal for `claude --cloud`**, which `cloud-pilot start` provides by itself. On Windows 10 1809 or later it uses
+  Windows' own pseudo-console (ConPTY) through the built-in Windows PowerShell: nothing to install. On macOS and Linux
+  it uses Python 3, which they ship with. Python with `pywinpty` stays a fallback on Windows where ConPTY is unavailable.
 - Windows, macOS or Linux.
 
 ## Install

@@ -1,6 +1,7 @@
-// The process side of `start`: find Python, set up pywinpty on Windows, run pty_run.py and relay its output.
+// The process side of `start`: give claude a terminal and relay its output. Windows: the built-in ConPTY through
+// Windows PowerShell (conpty.ps1), nothing to install; Python's pty_run.py is the fallback there and the way on macOS/Linux.
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,7 @@ import { resolveExe, safeCwd } from '../hub/lib/exe.mjs';
 import { StartError } from './lib.mjs';
 
 export const PTY_SCRIPT = fileURLToPath(new URL('./pty_run.py', import.meta.url));
+export const CONPTY_SCRIPT = fileURLToPath(new URL('./conpty.ps1', import.meta.url));
 const PROBE = "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))";
 const MIN_PYTHON = [3, 7];
 
@@ -119,13 +121,40 @@ export function preparePython({ env = process.env, platform = process.platform, 
   return venvPython;
 }
 
-// Starts `argv` inside a terminal through pty_run.py. Returns a handle:
+// The ConPTY helper: conpty.ps1 run by Windows PowerShell as an encoded command (so no execution policy applies to a
+// script file). Same protocol as pty_run.py.
+export function conptyHelper(read = readFileSync) {
+  const encoded = Buffer.from(read(CONPTY_SCRIPT, 'utf8'), 'utf16le').toString('base64');
+  return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], label: 'Windows PowerShell (ConPTY)' };
+}
+
+// Whether ConPTY works here: Windows 10 1809 or later, and PowerShell allowed to compile its small helper.
+export function canConpty(exec = defaultExec, env = process.env) {
+  const h = conptyHelper();
+  try {
+    exec(h.cmd, h.args, { env: { ...env, CLOUD_PILOT_PTY_CHECK: '1' }, timeout: 60000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The terminal helper `start` runs: { cmd, args, label }. Windows: ConPTY unless CLOUD_PILOT_PYTHON asks for Python or
+// ConPTY is unavailable (then Python with pywinpty, set up as before). macOS and Linux: Python's pty module.
+export function prepareHelper({ env = process.env, platform = process.platform, dataDir, exec = defaultExec, exists = existsSync } = {}) {
+  if (platform === 'win32' && !setting('PYTHON', env) && canConpty(exec, env)) return conptyHelper();
+  const python = preparePython({ env, platform, dataDir, exec, exists });
+  return { cmd: python.cmd, args: [...python.args, '-I', PTY_SCRIPT], label: shown(python) };
+}
+
+// Starts `argv` inside a terminal through the helper (prepareHelper; or a Python from preparePython). Returns a handle:
 //   onData(fn)   fn(text) for each piece of output
 //   onClose(fn)  fn({ code, stderr }) once the helper has ended
 //   stop()       close the terminal and the command; resolves when the helper has exited
-export function startPty({ python, argv, cwd, env = process.env, rows = 50, cols = 200 }) {
+export function startPty({ helper, python, argv, cwd, env = process.env, rows = 50, cols = 200 }) {
+  const h = helper ?? { cmd: python.cmd, args: [...python.args, '-I', PTY_SCRIPT] };
   // The helper starts in the home folder (the folder claude runs in travels in the request, not as the helper's own).
-  const child = spawn(resolveExe(python.cmd), [...python.args, '-I', PTY_SCRIPT], { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, cwd: safeCwd() });
+  const child = spawn(resolveExe(h.cmd), h.args, { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, cwd: safeCwd() });
   const decoder = new StringDecoder('utf8');
   const dataFns = [];
   const closeFns = [];
@@ -159,10 +188,11 @@ export function startPty({ python, argv, cwd, env = process.env, rows = 50, cols
   };
 }
 
-// What pty_run.py's exit status and messages mean for the person running the tool.
+// What the helper's exit status and messages mean for the person running the tool. `python` is the helper (or a Python).
 export function helperFailure(info, python) {
+  const name = python?.label ?? shown(python);
   const msg = String(info.stderr || '').split('\n').filter((l) => l.startsWith('pty_run:')).map((l) => l.slice(8).trim()).join('; ');
-  if (info.code === 3) return `no pseudo-terminal available: ${msg || 'pywinpty is missing'} (python: ${shown(python)})`;
+  if (info.code === 3) return `no pseudo-terminal available: ${msg || 'pywinpty is missing'} (helper: ${name})`;
   if (info.code === 4) return `claude could not be started: ${msg}`;
   if (info.code && info.code !== 0) return `the terminal helper failed (exit ${info.code}): ${msg || String(info.stderr || '').slice(-300)}`;
   return '';

@@ -411,11 +411,12 @@ export function pollOnce(p, { api, publicKey = null, nowMs = Date.now(), notify 
         const list = readJson(p.tracked, []);
         for (const t of list.filter((x) => x.active && x.repo === repo)) {
           t.memo = { ...(t.memo ?? {}), errStreak: (t.memo?.errStreak ?? 0) + 1, errSinceMs: t.memo?.errSinceMs ?? nowMs };
-          if (t.memo.errStreak === ERROR_STREAK) deliver(p, t, [{ kind: 'error', urgent: true, repo, branch: t.branch || undefined, url: t.url || undefined, trackId: t.id, message: errors[repo] }], waiters, ctx);
+          // A branch the watch found by itself was never asked for: its trouble shows in the band, not as a toast.
+          if (t.memo.errStreak === ERROR_STREAK && !t.discoveredBy) deliver(p, t, [{ kind: 'error', urgent: true, repo, branch: t.branch || undefined, url: t.url || undefined, trackId: t.id, message: errors[repo] }], waiters, ctx);
           if (nowMs - t.memo.errSinceMs >= ERROR_GIVE_UP_MS) { // a deleted repo is not polled forever
             t.active = false; t.endedMs = nowMs;
             t.view = { ...(t.view ?? {}), state: 'error', detail: `stopped: GitHub unreadable for ${Math.round(ERROR_GIVE_UP_MS / 3600000)} h` };
-            deliver(p, t, [{ kind: 'error', urgent: true, final: true, repo, branch: t.branch || undefined, url: t.url || undefined, trackId: t.id, message: `${errors[repo]} (tracking stopped)` }], waiters, ctx);
+            if (!t.discoveredBy) deliver(p, t, [{ kind: 'error', urgent: true, final: true, repo, branch: t.branch || undefined, url: t.url || undefined, trackId: t.id, message: `${errors[repo]} (tracking stopped)` }], waiters, ctx);
           }
         }
         writeJson(p.tracked, list, { backup: true });

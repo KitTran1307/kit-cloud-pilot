@@ -18,7 +18,7 @@ import {
   MAX_BRIEF, StartError, USAGE, analyze, checkBranch, checkBrief, checkDenied, checkEffort, checkMode, checkModel, claudeArgv, detectBranch, isLocalOnly, makeTitle,
   parseArgs, promptError, resolveClaude, tailOf,
 } from './lib.mjs';
-import { childExit, helperFailure, preparePython, startPty } from './runner.mjs';
+import { childExit, helperFailure, prepareHelper, startPty } from './runner.mjs';
 
 const RAW_CAP = 400_000; // characters of terminal output kept for scanning
 const SETTLE_MS = 400; // a session link at the very end of the output counts once nothing follows it for this long
@@ -59,9 +59,9 @@ function collect(handle, { brief, timeoutMs, settleMs }) {
 }
 
 async function defaultStart({ argv, cwd, env }) {
-  const python = preparePython({ env, dataDir: hubDir(env) });
-  const handle = startPty({ python, argv, cwd, env });
-  handle.explain = (info) => helperFailure(info, python);
+  const helper = prepareHelper({ env, dataDir: hubDir(env) });
+  const handle = startPty({ helper, argv, cwd, env });
+  handle.explain = (info) => helperFailure(info, helper);
   return handle;
 }
 

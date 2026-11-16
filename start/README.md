@@ -21,8 +21,8 @@ node start/index.mjs --cwd /path/to/repo --brief-file brief.md
 |---|---|---|
 | Node.js | 18 or newer | 18 or newer |
 | Claude Code | `claude` on `PATH`, signed in with a claude.ai account that may start cloud sessions | `claude.exe` on `PATH` (the native install), same sign-in |
-| Python | 3.7 or newer (`python3` or `python`); standard library only | 3.7 or newer (`python3`, `python` or `py -3`) |
-| Terminal backend | the `pty` module of the standard library | the package `pywinpty` (ConPTY), installed for you, see below |
+| Terminal backend | the `pty` module of Python's standard library | Windows' own ConPTY through Windows PowerShell (`conpty.ps1`), nothing to install |
+| Python | 3.7 or newer (`python3` or `python`); standard library only | only as a fallback when ConPTY is unavailable (Windows older than 10 1809, or PowerShell not allowed to compile the helper), or when `CLOUD_PILOT_PYTHON` is set: 3.7 or newer with `pywinpty`, installed for you, see below |
 | git | on `PATH` (finds the GitHub origin for tracking) | same |
 
 Tracking also needs what the hub needs: the GitHub CLI (`gh`) signed in. Run `node hub/hub.mjs doctor` to check.
@@ -176,8 +176,9 @@ log nothing.
 ## How it works
 
 1. Reads the options, refuses local-only accounts, loads and checks the brief, finds `claude`.
-2. Finds Python and, on Windows, a Python that has `pywinpty` (creating the venv once).
-3. Runs `python -I pty_run.py`, sends it `{argv, cwd}` as one JSON line on stdin. `pty_run.py` starts
+2. Picks the terminal helper: on Windows `conpty.ps1` under Windows PowerShell when ConPTY works, else (and on macOS
+   and Linux) Python, on Windows one that has `pywinpty` (creating the venv once).
+3. Runs the helper (`python -I pty_run.py`, or `conpty.ps1` with the same protocol), sends it `{argv, cwd}` as one JSON line on stdin. It starts
    `claude --cloud <brief>` in a pseudo-terminal (ConPTY through `pywinpty` on Windows, the `pty` module elsewhere) and
    relays everything it prints.
 4. Cleans the terminal output (escape sequences, cursor moves, carriage returns) and looks for the session link, ignoring
@@ -209,7 +210,7 @@ node --test start/tests/*.test.mjs
 
 No network, no real `claude`: a fake `claude` (`tests/fixtures/fake-claude.mjs`) stands in through
 `CLOUD_PILOT_CLAUDE_BIN`, and the hub runs against a temporary `CLOUD_PILOT_DIR` with its daemon launch stubbed out.
-The terminal tests (`tests/pty.test.mjs`) run the real `pty_run.py`. On macOS and Linux they need only Python 3. On
+`tests/conpty.test.mjs` runs the real `conpty.ps1` on Windows (skipped elsewhere, with the reason). The terminal tests (`tests/pty.test.mjs`) run the real `pty_run.py`. On macOS and Linux they need only Python 3. On
 Windows they run when the Python found has `pywinpty` (for example
 `CLOUD_PILOT_PYTHON=<venv>\Scripts\python.exe node --test start/tests/pty.test.mjs`) and are skipped, with the reason,
 otherwise. Everything else runs on every system.
