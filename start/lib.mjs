@@ -263,6 +263,7 @@ export function findSessionUrl(text, brief = '') {
 export const PROMPTS = [
   { kind: 'trust', re: /^(?:do you trust\b|is this a project you\b|quick safety check\b|yes, i trust this folder\b)|\btrust (?:the files in )?this (?:folder|directory)\??$/i },
   { kind: 'login', re: /^(?:cloud sessions need a claude\.ai sign-in\b|cloud sessions aren'?t available with this console sign-in\b|unable to get organization uuid\b|not logged in\b|you are not logged in\b|please (?:run )?\/?log ?in\b|please sign in\b|select login method\b|choose (?:a )?login method\b|paste (?:the )?code here\b|browser didn'?t open\b|opening browser to sign in\b|invalid api key\b|oauth token has expired\b|run \/login\b|(?:sign|log) in (?:to|with)\b|\d\.\s*(?:claude account with subscription|anthropic console account)\b)/i },
+  { kind: 'codemode', re: /^[❯>]?\s*(?:no, start without it\b|yes, turn on code mode\b)/i },
   { kind: 'confirm', re: /(?:\(y\/n\)|\[y\/n\]|\(yes\/no\)|\[yes\/no\])\s*[:?]?$/i },
   { kind: 'picker', re: /^(?:select|choose|pick) (?:an? |the )?(?:environment|repository|repo|organization|account|region)\b|\benter to (?:select|confirm)\b.*\besc\b|\bto navigate\b.*\besc\b/i },
 ];
@@ -272,6 +273,8 @@ export const PROMPTS = [
 export const PROMPTS_NOSPACE = [
   { kind: 'trust', re: /^(?:doyoutrust|isthisaprojectyou|quicksafetycheck|yes,itrustthisfolder)/i },
   { kind: 'login', re: /^(?:cloudsessionsneedaclaude\.aisign-in|notloggedin|youarenotloggedin|please(?:run)?\/?login|pleasesignin|selectloginmethod|choose(?:a)?loginmethod|pastethecodehere|invalidapikey|oauthtokenhasexpired|run\/login)/i },
+  // Code Mode's first-run question, seen for real as "❯No, start without itYes, turn on Code Mode".
+  { kind: 'codemode', re: /^[❯>]?(?:no,startwithoutit|yes,turnoncodemode)/i },
   { kind: 'picker', re: /^(?:select|choose|pick)(?:an?|the)?(?:environment|repository|repo|organization|account|region)|entertoconfirm.*esc/i },
 ];
 
@@ -314,6 +317,7 @@ export function promptError(kind, cwd) {
   const where = {
     trust: `open claude once in ${cwd} and accept the trust question, then retry`,
     login: 'run "claude auth login" (or /login inside claude), then retry',
+    codemode: 'Code Mode asks once per account: run "claude" yourself on this account, choose "Yes, turn on Code Mode", then retry',
     confirm: 'run "claude --cloud" yourself once to answer it, then retry',
     picker: 'run "claude --cloud" yourself once and pick the environment or repository, then retry',
   }[kind];

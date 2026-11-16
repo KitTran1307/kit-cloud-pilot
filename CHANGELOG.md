@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+
+- **Works with Code Mode.** When Claude Code's Code Mode is on and the account has not yet answered its one-time
+  "turn on Code Mode?" question, `start` used to wait on that question until it timed out. It now recognizes the
+  question right away and says how to answer it once; Code Mode itself is never turned off.
+
 ## 1.2.1
 
 - **The skill names the CLI path itself.** The plugin no longer adds a system-prompt section: on Team and Enterprise

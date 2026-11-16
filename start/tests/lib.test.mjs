@@ -67,6 +67,12 @@ describe('findSessionUrl', () => {
 });
 
 describe('detectPrompt', () => {
+  test("recognizes Code Mode's first-run question and says how to answer it", () => {
+    assert.equal(detectPrompt('❯ No, start without it\n  Yes, turn on Code Mode').kind, 'codemode');
+    assert.equal(detectPrompt('❯No, start without itYes, turn on Code Mode').kind, 'codemode'); // as seen on Windows
+    assert.equal(detectPrompt('Fix it so Code Mode can turn on', 'Fix it so Code Mode can turn on'), null);
+    assert.match(promptError('codemode', '/r'), /choose "Yes, turn on Code Mode"/);
+  });
   test('recognizes claude prompt lines', () => {
     assert.equal(detectPrompt('Do you trust the files in this folder?').kind, 'trust');
     assert.equal(detectPrompt(' \u2502 Do you trust the files in this folder? \u2502').kind, 'trust');
