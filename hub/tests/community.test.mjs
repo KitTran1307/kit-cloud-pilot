@@ -200,7 +200,11 @@ test('settings live on each track: delete and notify follow the registering sess
   merged = true;
   pollOnce(p, { api, nowMs: T0 + 70 * MIN, aliveFn: () => false, notify: (a, b) => toasts.push(b) });
   assert.deepEqual(api.deleted, [`repos/${REPO}/git/refs/heads/claude/parser`], 'the opted-in track only');
-  assert.equal(toasts.length, 0, 'its session turned notifications off');
+  // claude/parser (notifications off) merged, which is urgent: it must not toast. claude/other (on, never pushed, its
+  // session gone) toasts its no-push once.
+  assert.ok(!toasts.some((t) => t.includes('claude/parser')), 'its session turned notifications off');
+  assert.equal(toasts.length, 1);
+  assert.match(toasts[0], /claude\/other: no-push/);
   done();
 });
 

@@ -9,6 +9,10 @@ export const REPO_QUIET_MS = 45 * 60_000; // repo track: an open PR idle this lo
 export const ABANDON_MS = 4 * 3600_000; // no PR open and no activity this long -> "abandoned", the track stops
 export const OPEN_PR_ABANDON_MS = 72 * 3600_000; // an open PR waiting (review, a question) is watched this long
 export const FRESH_MS = 15 * 60_000; // a track with no branch counts as working this long, then is dropped
+// A started session (a track with its session link) that has pushed nothing this long is reported once, urgently: it
+// may be unable to push (the account's GitHub connection lapsed, or the Claude GitHub App lacks the repo) or be stuck
+// on something only its own page shows. Waiting for "stalled" (1 h) or "abandoned" (4 h) loses that time.
+export const NO_PUSH_MS = 20 * 60_000;
 // A PR status line that needs the person: English words, or the protocol's original Vietnamese ones.
 const URGENT_TEXT = /WAITING FOR YOU|BLOCKED|CH\u1edc B\u1ea0N|K\u1eb8T/;
 
@@ -111,6 +115,14 @@ function branchTrack(track, now, nowMs) {
     view = { state: 'gone', detail: 'branch deleted' };
   } else {
     if (pr) events.push(...askEvents(track, pr, memo, nowMs), ...ciEvent(track, pr, memo));
+    const age = nowMs - track.createdMs;
+    if (!pr && !memo.sawBranch && !memo.noPush && track.url && !track.discoveredBy && age >= NO_PUSH_MS && age < ABANDON_MS) {
+      memo.noPush = true;
+      events.push(ev(track, 'no-push', {
+        minutes: Math.round(age / 60000),
+        note: 'Nothing reached GitHub since this cloud session started: no branch, commit or PR. Open its link (url) to see why. Common causes: the account that started it lost its GitHub connection (reconnect GitHub on claude.ai/code, or run /web-setup in that account), the Claude GitHub App is not installed on the repository, or the session is waiting on a question or a permission on its own page. It may also simply not have pushed yet.',
+      }, true));
+    }
     const idle = nowMs - last;
     const limit = pr ? OPEN_PR_ABANDON_MS : ABANDON_MS;
     if (idle >= limit) {

@@ -17,6 +17,7 @@ cloud-pilot status [--json]
 cloud-pilot doctor                           # node, gh, gh login, data folder: one JSON line
 cloud-pilot stop
 bash hub-wait.sh [--max-min 240] [--settle-sec 60]   # wait for this session's events (run in the background)
+cloud-pilot take [--settle-sec 60]           # one look, no waiting: this session's events, then gone from the queue
 ```
 
 The calling session is read from `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID` and `CLAUDE_CONFIG_DIR`, which Claude Code
@@ -32,7 +33,9 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
   in memory (passed to `gh` as `GH_TOKEN`), never written or logged. A 404 on a PR list is an error (no access), never
   "no PRs".
 - Branch session events: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `question`, `question_unanswerable`
-  (an ask edited after it was reported), `question_stale` (see below), `stalled` (1 h quiet),
+  (an ask edited after it was reported), `question_stale` (see below), `no-push` (urgent, once: a track registered
+  with its session link saw no branch, commit or PR 20 min after it was made; the event's `note` lists the usual
+  causes, such as a lapsed GitHub connection of the account that started it), `stalled` (1 h quiet),
   `abandoned` (4 h quiet with no PR; 72 h with a PR waiting), `error` (3 failed rounds in a row, reported once).
 - A PR closed without GitHub's merge whose head commit is in its base branch (merged locally and pushed) is reported as
   `merged` with `landed: true` and `merged_sha: null`. The hub waits up to 15 min after the close for that push before
@@ -61,6 +64,11 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
   an ask with no signed answer. A session that already read its answer and moved on may also see one: check before
   answering again.
 - Urgent events (questions, merges, failures) are delivered at once; others are batched for up to 60 seconds.
+- `take` is for a plugin that hands the events to its own session (kit-cloud does, every 30 s while its queue file
+  holds something): it prints `{"status":"events",...}`, `{"status":"settling","retry_sec":n}` or
+  `{"status":"empty"}`, and only takes the events of tracks the session registered. Events of branches a watch found
+  by itself stay queued for `hub-wait.sh` (unless the session tracked that branch by hand), so a watch never wakes a
+  session about a branch nobody there asked for. Tracks a session took over (`handed_over`) count as its own.
 - Routing: the session that registered a track gets its events while it lives; when it is gone, another live session
   waiting on the same repo and account takes the track over; with nobody left, events are kept and a desktop
   notification is shown for urgent ones, at most once an hour per track.

@@ -130,6 +130,9 @@ export function addTrack(p, spec, owner, nowMs = Date.now(), env = process.env) 
     if (same) {
       Object.assign(same, { owner, ...(same.discoveredBy ? {} : prefs), url: spec.url || same.url, title: spec.title || same.title, releaseTree: spec.releaseTree || same.releaseTree, askAuthors: spec.askAuthors ?? same.askAuthors });
       if (same.discoveredBy && spec.title && !spec.discoveredBy) same.localTitle = true; // a title the local session gave: shown as it is
+      // A branch the watch found first, then tracked by hand: this session asked for it, so its events are its own (take,
+      // the band). Its branch is still never deleted: whoever pushed it may be someone else.
+      if (same.discoveredBy && !spec.discoveredBy) same.claimed = true;
       writeJson(p.tracked, list, { backup: true });
       return { ...same, updated: true };
     }
@@ -237,6 +240,25 @@ export function peekQueue(p, sessionId, { nowMs = Date.now(), settleMs = 60_000 
   });
 }
 
+// For a plugin that hands the events to its own session (kit-cloud): what peekQueue would report, but only for tracks
+// this session registered itself. Events of branches a repo watch found on its own stay queued for a waiter that asks
+// for them (hub-wait), so a session is never woken about cloud work it did not start.
+export function takeOwn(p, sessionId, { nowMs = Date.now(), settleMs = 60_000 } = {}) {
+  return withLock(p, () => {
+    const file = queueFile(p, sessionId);
+    const q = readJson(file, [], { cache: true });
+    if (!q.length) return null;
+    const found = new Set(readJson(p.tracked, []).filter((t) => t.discoveredBy && !t.claimed).map((t) => t.id));
+    const own = q.filter((e) => !found.has(e.trackId));
+    if (!own.length) return null;
+    const oldest = Math.min(...own.map((e) => e.at ?? nowMs));
+    const left = settleMs - (nowMs - oldest);
+    if (!own.some((e) => e.urgent) && left > 0) return { settleMs: left };
+    writeJson(file, q.filter((e) => found.has(e.trackId)));
+    return { events: own };
+  });
+}
+
 export function takeReady(p, sessionId, opts = {}) {
   return peekQueue(p, sessionId, opts)?.events ?? null;
 }
@@ -312,6 +334,20 @@ function cmdWaitTake(p, flags) {
   }
 }
 
+// One look, no waiting: { status: events | settling | empty }. kit-cloud runs it as its session (CLAUDE_CODE_SESSION_ID)
+// when that session's queue file holds something, then hands the events to Claude in that session.
+function cmdTake(p, flags) {
+  const me = caller();
+  // Run by the session's own process (its pid, as with wait-begin): a resumed session keeps its tracks, never handed
+  // to another session or toasted as gone while it is open.
+  if (!me.sessionId.startsWith('manual-')) refreshOwnerPid(p, me);
+  const settleMs = Math.min(Number(flags['settle-sec'] ?? 60), 600) * 1000;
+  const got = takeOwn(p, me.sessionId, { settleMs });
+  if (got?.events) console.log(JSON.stringify({ status: 'events', count: got.events.length, events: got.events }));
+  else if (got?.settleMs) console.log(JSON.stringify({ status: 'settling', retry_sec: Math.max(1, Math.ceil(got.settleMs / 1000)) }));
+  else console.log(JSON.stringify({ status: 'empty' }));
+}
+
 function cmdWaitEnd(p, flags) {
   const me = caller();
   remove(waiterFileOf(p, me.sessionId, Number(flags['waiter-pid'])));
@@ -349,7 +385,7 @@ export function writeState(p, extra = {}, nowMs = Date.now(), aliveFn = isAlive)
     .filter((t) => t.active || nowMs - (t.endedMs ?? t.createdMs) < VIEW_FINISHED_MS)
     .map((t) => ({
       id: t.id, kind: t.kind, repo: t.repo, branch: t.branch, url: t.url, title: trackTitle(t) ?? t.title, active: t.active,
-      ...(t.discover ? { discover: true } : {}), ...(t.discoveredBy ? { discovered: true } : {}),
+      ...(t.discover ? { discover: true } : {}), ...(t.discoveredBy && !t.claimed ? { discovered: true } : {}),
       account: t.owner?.account, ownerSessionId: t.owner?.sessionId, repoRoot: t.owner?.repoRoot, createdMs: t.createdMs,
       ...(t.view ?? { state: 'working', detail: 'waiting for the first check', lastActivityMs: t.createdMs }),
     }))
@@ -687,6 +723,9 @@ export function main(argv, p = paths()) {
       return;
     case 'wait-end':
       cmdWaitEnd(p, flags);
+      return;
+    case 'take':
+      cmdTake(p, flags);
       return;
     case 'status':
       cmdStatus(p, flags);

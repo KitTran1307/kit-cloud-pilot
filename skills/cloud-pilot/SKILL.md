@@ -54,10 +54,14 @@ person runs `claude` once in that folder to accept it). Briefs must not contain 
 a command-line argument. A follow-up message to a running session: `claude -p "<message>" --cloud <session_id>`.
 
 ## Wait and handle events
-Run `cloud-pilot wait` in the background (your shell tool's background mode). It prints one JSON line when something
-needs this session:
+With kit-cloud 2.5 or later (its `wakeSession` option on) and cloud-pilot 1.4 or later, events of the sessions you
+started arrive by themselves, as a message from the kit-cloud plugin holding the same JSON as below: handle them as
+below. Until such a message has reached this session, run `cloud-pilot wait` in the background (your shell tool's
+background mode). It prints one JSON line when something
+needs this session, then ends: start it again right after handling each batch (a `stalled` one too), or later events
+such as `merged` stay unread in the queue.
 - `{"status":"events","events":[...]}`. Kinds: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `question`,
-  `question_unanswerable`, `question_stale` (your answer was for an older commit: answer again), `stalled` (1 h with no push: a long build or a usage limit look the same, so open the session link before acting), `abandoned` (the track ended), `error` (GitHub unreadable: check
+  `question_unanswerable`, `question_stale` (your answer was for an older commit: answer again), `no-push` (urgent: 20 min after the start nothing reached GitHub; open the session link: a lapsed GitHub connection of that account, a missing Claude GitHub App or a prompt waiting on its page are the usual causes, and the person may have to reconnect GitHub), `stalled` (1 h with no push: a long build or a usage limit look the same, so open the session link before acting), `abandoned` (the track ended), `error` (GitHub unreadable: check
   `gh auth status`). `handed_over: true` means the session that started it is gone and this one took it over.
 - `{"status":"nothing-tracked"}`: nothing left to wait for. `{"status":"timeout"}`: wait again if work is open.
 

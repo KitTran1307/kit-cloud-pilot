@@ -6,6 +6,7 @@
 //   cloud-pilot track --repo owner/name [--branch claude/<slug>] [--url <link>] [--title <text>]
 //   cloud-pilot watch --repo owner/name | unwatch --repo owner/name   track new claude/* branches by themselves
 //   cloud-pilot wait [--max-min 240]          wait for this session's events (one JSON line); run in the background
+//   cloud-pilot take [--settle-sec 60]        this session's events now, no waiting (for a plugin such as kit-cloud)
 //   cloud-pilot status [--json] | untrack --id <id> | stop | doctor
 //   cloud-pilot channel keygen|fingerprint|setup <repo>|ask|wait   signed question channel
 //   cloud-pilot questions --repo owner/name --pr N [--all]   open questions with their question_sha256
@@ -16,7 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const HUB_VERBS = new Set(['track', 'track-repo', 'watch', 'unwatch', 'untrack', 'wait', 'wait-begin', 'wait-take', 'wait-end', 'status', 'stop', 'doctor', 'daemon']);
+const HUB_VERBS = new Set(['track', 'track-repo', 'watch', 'unwatch', 'untrack', 'wait', 'wait-begin', 'wait-take', 'wait-end', 'take', 'status', 'stop', 'doctor', 'daemon']);
 
 export function version() {
   try { return JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? '0.0.0'; } catch { return '0.0.0'; }

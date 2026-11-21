@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0
+
+- **A session that pushes nothing is reported early.** A started session (one tracked with its link, as `start` does)
+  that has no branch, commit or PR on GitHub 20 minutes after it started now gets one urgent `no-push` event, with the
+  usual causes in its `note`: the account that started it lost its GitHub connection (reconnect GitHub on
+  claude.ai/code, or run `/web-setup` in that account), the Claude GitHub App is missing on the repository, or the
+  session waits on a question or a permission on its own page. Before, the first sign was `stalled` after an hour.
+- **`cloud-pilot take`**: one look at this session's events, no waiting. The kit-cloud plugin (2.5.0) uses it to hand
+  the events to Claude in that session by itself, so they no longer depend on a `wait` that Claude restarted after
+  each batch. It takes only the events of sessions the caller registered; those of branches a watch found by itself
+  stay for `wait`.
+- The skill says to start `wait` again after every batch when kit-cloud is not installed.
+
 ## 1.3.2
 
 - **The repository folder is recognized behind links too.** When a program is looked up on PATH, the current folder
