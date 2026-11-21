@@ -80,6 +80,7 @@ Environment variables (for example in the `env` block of `~/.claude/settings.jso
 | `CLOUD_PILOT_LOCAL_ONLY` | Comma list of accounts that never start cloud sessions (`default` = `~/.claude`, `work` = `~/.claude-work`) |
 | `CLOUD_PILOT_NOTIFY=0` | No desktop notifications |
 | `CLOUD_PILOT_DELETE_MERGED=1` | Delete a tracked `claude/*` branch after its PR merges (only while it still points at the merged commit; never branches found by `watch`) |
+| `CLOUD_PILOT_NO_PUSH_MIN` | Minutes a started session may go without pushing before `no-push` sets its account aside (5-120, default 20) |
 | `CLOUD_PILOT_KEY_DIR`, `CLOUD_PILOT_PRIVATE_KEY` | Where the question channel's signing key lives (default `~/.cloud-pilot/keys`), or an existing key file |
 | `CLOUD_PILOT_ASK_PUBLIC_KEY`, `CLOUD_PILOT_ASK_KEY_FINGERPRINT` | Public key (and pin) the hub uses to tell answered questions from open ones |
 | `CLOUD_PILOT_CLAUDE_BIN` | The `claude` executable, when it is not on `PATH` |

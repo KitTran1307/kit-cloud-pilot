@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0
+
+- **No more cloud sessions where they cannot push.** When a started session pushes nothing (`no-push`), its account is
+  set aside: `cloud-pilot start` refuses it, with what to do, instead of sending another session that cannot reach
+  GitHub. It comes back by itself when a session of that account pushes after all, or when you reconnect GitHub
+  (https://claude.ai/connect-github) and run `cloud-pilot account --ok <account>`. `cloud-pilot account` lists them.
+- **Taking the work over locally:** `start` keeps a private copy of each brief (deleted with its track), and the
+  `no-push` event names it (`brief_file`) with the account, so Claude can continue on your machine.
+- `CLOUD_PILOT_NO_PUSH_MIN` (5-120, default 20) sets how long a started session may go without a push.
+
 ## 1.4.0
 
 - **A session that pushes nothing is reported early.** A started session (one tracked with its link, as `start` does)

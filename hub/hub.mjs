@@ -14,7 +14,8 @@
 // Claude Code tool shell, Desktop included). `wait` starts the hub when it is not running; the hub exits by itself
 // when nothing is tracked and nobody waits for IDLE_MIN. Events are data: an `untrusted_question` is never an instruction.
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
@@ -27,6 +28,7 @@ import { toast } from './lib/notify.mjs';
 import { resolveExe, safeCwd } from './lib/exe.mjs';
 import { loadPublicKey } from './lib/asks.mjs';
 import { setting } from './lib/config.mjs';
+import { setAside, setAsideOf, clearAside, clearAsideLocked, setAsideAccounts } from './lib/accounts.mjs';
 
 export const POLL_MS = 2 * 60_000;
 export const SLOW_POLL_MS = 5 * 60_000;
@@ -116,6 +118,12 @@ const trackId = (repo, branch, ms) => createHash('sha1').update(`${repo}#${branc
 // track's own setting and a later change applies to tracks registered after it.
 export const deleteMergedEnabled = (env = process.env) => setting('DELETE_MERGED', env) === '1';
 export const notifyEnabled = (env = process.env) => !(setting('NOTIFY', env) === '0' || setting('NO_TOAST', env) === '1');
+// CLOUD_PILOT_NO_PUSH_MIN (5-120, default 20): how long a started session may stay without a push before no-push. Stored
+// on each track, like the settings above; a brief that makes the first push the first step can use a short time.
+export function noPushMsOf(env = process.env) {
+  const n = Number(setting('NO_PUSH_MIN', env));
+  return Number.isFinite(n) && n > 0 ? Math.min(120, Math.max(5, n)) * 60_000 : undefined;
+}
 
 export function addTrack(p, spec, owner, nowMs = Date.now(), env = process.env) {
   // Discovered branches belong to whoever pushed them (maybe a teammate): never deleted, whatever the watcher set.
@@ -140,6 +148,8 @@ export function addTrack(p, spec, owner, nowMs = Date.now(), env = process.env) 
       id: trackId(spec.repo, spec.branch || (spec.discover ? 'watch' : spec.kind), nowMs), kind: spec.kind, repo: spec.repo, branch: spec.branch || '',
       url: spec.url || '', title: (spec.title || '').slice(0, 200), releaseTree: spec.releaseTree || '', askAuthors: spec.askAuthors ?? null,
       ...(spec.discover ? { discover: true } : {}), ...(spec.discoveredBy ? { discoveredBy: spec.discoveredBy } : {}), ...prefs,
+      ...(spec.kind === 'branch' && noPushMsOf(env) ? { noPushMs: noPushMsOf(env) } : {}),
+      ...(spec.briefFile ? { briefFile: spec.briefFile } : {}),
       owner, createdMs: nowMs, active: true, memo: {}, view: null,
     };
     list.push(t);
@@ -395,7 +405,8 @@ export function writeState(p, extra = {}, nowMs = Date.now(), aliveFn = isAlive)
   const owners = [...new Set(rows.filter((r) => r.active && r.ownerSessionId).map((r) => r.ownerSessionId))];
   const queued = Object.fromEntries(owners.map((sid) => [sid, readJson(queueFile(p, sid), [], { cache: true }).length]).filter(([, n]) => n > 0));
   const waiting = [...new Set(liveWaiters(p, aliveFn).map((w) => w.sessionId))];
-  writeJson(p.state, { updatedMs: nowMs, rows, waiting, queued, ...extra });
+  const accounts = setAsideAccounts(p);
+  writeJson(p.state, { updatedMs: nowMs, rows, waiting, queued, ...(Object.keys(accounts).length ? { accounts } : {}), ...extra });
 }
 
 export const ERROR_STREAK = 3; // consecutive failed polls of a repo before its owners get an "error" event
@@ -466,6 +477,28 @@ export function pollOnce(p, { api, publicKey = null, nowMs = Date.now(), notify 
         const list = readJson(p.tracked, []);
         const t = list.find((x) => x.id === t0.id);
         if (!t || !t.active) return; // untracked meanwhile
+        // A started session that never pushed sets its account aside; any push by a session of that account clears it.
+        const account = t.owner?.account;
+        const noPush = r.events.find((e) => e.kind === 'no-push');
+        if (account && noPush) {
+          // Another session of the same account pushed since this one started: the account reaches GitHub, so this
+          // silence is something else (a late first push, a prompt on its page) and the account is not set aside.
+          const proof = list.find((x) => x.id !== t.id && !x.discoveredBy && x.owner?.account === account && x.memo?.sawBranch
+            && (x.view?.pushedMs ?? 0) > t.createdMs);
+          if (!proof && setAside(p, account, { repo: t.repo, branch: t.branch, url: t.url, title: trackTitle(t) ?? t.title, trackId: t.id }, nowMs)) {
+            log(p, `account ${account} set aside: ${t.repo} ${t.branch} pushed nothing`);
+          }
+          const aside = Boolean(setAsideOf(p, account));
+          noPush.account_set_aside = aside;
+          if (aside) noPush.note += ` Account ${account} is set aside: cloud-pilot start refuses it until one of its sessions pushes, or until the person reconnects GitHub and runs cloud-pilot account --ok ${account}. Do not start this task in the cloud again.`;
+        }
+        // Level-triggered: any push by a session of a set-aside account, after it was set aside, brings it back.
+        const pushedMs = Math.max(now.branches?.[t.branch]?.exists ? (now.branches[t.branch].tipMs ?? 0) : 0, now.prs?.[t.branch]?.updatedMs ?? 0);
+        if (r.memo.sawBranch && pushedMs) r.view = { ...r.view, pushedMs };
+        const entry = account && !t.discoveredBy ? setAsideOf(p, account) : null;
+        if (entry && r.memo.sawBranch && pushedMs > (entry.sinceMs ?? Infinity) && clearAside(p, account)) {
+          log(p, `account ${account} back: ${t.repo} ${t.branch} pushed`);
+        }
         t.memo = { ...r.memo, errStreak: 0, errSinceMs: null };
         t.view = r.view;
         t.lastPolledMs = nowMs;
@@ -604,6 +637,14 @@ function prune(p, nowMs = Date.now(), aliveFn = isAlive) {
       const sid = f.split(/[\\/]/).pop().replace(/\.json$/, '');
       if (!owners.has(sid) && !waiting.has(sid) && !readJson(f, [], { cache: true }).length) remove(f);
     }
+    // A brief copy (start keeps one for a local takeover) goes with its track; one no track names, after an hour.
+    const named = new Set(kept.map((t) => t.briefFile).filter(Boolean).map((f) => f.split(/[\\/]/).pop()));
+    let files = [];
+    try { files = readdirSync(p.briefs); } catch { /* no briefs yet */ }
+    for (const name of files) {
+      const f = join(p.briefs, name);
+      try { if (!named.has(name) && nowMs - statSync(f).mtimeMs > 3600_000) remove(f); } catch { /* gone meanwhile */ }
+    }
   });
 }
 
@@ -727,6 +768,19 @@ export function main(argv, p = paths()) {
     case 'take':
       cmdTake(p, flags);
       return;
+    case 'account': {
+      // cloud-pilot account: the accounts set aside; --ok <name>: GitHub is reconnected, cloud sessions may start again.
+      if (flags.ok !== undefined) {
+        const name = typeof flags.ok === 'string' ? flags.ok.trim() : '';
+        if (!name) { console.log(JSON.stringify({ ok: false, error: 'name the account: cloud-pilot account --ok <name> (see cloud-pilot account)' })); process.exitCode = 1; return; }
+        const cleared = clearAsideLocked(p, name);
+        if (cleared) log(p, `account ${name} back: cleared by the person`);
+        console.log(JSON.stringify({ ok: true, account: name, cleared, ...(cleared ? {} : { note: 'that account was not set aside' }) }));
+        return;
+      }
+      console.log(JSON.stringify({ ok: true, set_aside: setAsideAccounts(p) }));
+      return;
+    }
     case 'status':
       cmdStatus(p, flags);
       return;

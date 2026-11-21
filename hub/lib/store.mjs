@@ -31,6 +31,8 @@ export function paths(dir = hubDir()) {
     queues: join(dir, 'queue'),
     waiters: join(dir, 'waiters'),
     lock: join(dir, 'tracked.lock'),
+    accounts: join(dir, 'accounts.json'),
+    briefs: join(dir, 'briefs'),
   };
 }
 

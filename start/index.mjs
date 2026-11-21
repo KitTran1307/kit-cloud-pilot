@@ -13,6 +13,8 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addTrack, ensureHub, caller, accountName } from '../hub/hub.mjs';
 import { paths, hubDir, privateDir, privateFile } from '../hub/lib/store.mjs';
+import { asideMessage, setAsideOf } from '../hub/lib/accounts.mjs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { setting } from '../hub/lib/config.mjs';
 import {
   MAX_BRIEF, StartError, USAGE, analyze, checkBranch, checkBrief, checkDenied, checkEffort, checkMode, checkModel, claudeArgv, detectBranch, isLocalOnly, makeTitle,
@@ -84,17 +86,32 @@ function isDirectory(dir) {
 }
 
 // Registers the session with the hub. The session is already running, so nothing here may fail the start.
-function track({ args, env, cwd, me, url, title, branch, p, spawnHub }) {
+function track({ args, env, cwd, me, url, title, branch, p, spawnHub, sessionId, brief }) {
   if (!args.track) return 'skipped: --no-track';
   if (!me.gh) return 'skipped: no GitHub origin';
+  const briefFile = keepBrief(p, sessionId, brief); // only for a tracked session: the hub deletes it with the track
   try {
-    const t = addTrack(p, { kind: 'branch', repo: me.gh, branch, url, title }, me, Date.now(), env);
+    const t = addTrack(p, { kind: 'branch', repo: me.gh, branch, url, title, briefFile }, me, Date.now(), env);
     const hub = { id: t.id };
     try { ensureHub(p, { spawnHub }); } catch (err) { hub.daemon = `not started: ${String(err?.message ?? err).slice(0, 200)}`; }
     return hub;
   } catch (err) {
+    if (briefFile) { try { rmSync(briefFile, { force: true }); } catch { /* best effort */ } }
     return `failed: ${String(err?.message ?? err).slice(0, 200)}`;
   }
+}
+
+// A private copy of the brief, named by the session, so the local session can take the work over if the cloud session
+// cannot push (no-push). The hub deletes it with the track. Never fails the start.
+function keepBrief(p, sessionId, brief) {
+  if (!/^session_[\w-]+$/.test(String(sessionId ?? ''))) return undefined;
+  try {
+    privateDir(p.briefs);
+    const file = join(p.briefs, `${sessionId}.md`);
+    writeFileSync(file, brief, { mode: 0o600 });
+    privateFile(file);
+    return file;
+  } catch { return undefined; }
 }
 
 // One line per start, never the brief.
@@ -119,6 +136,9 @@ export async function main(argv, opts = {}) {
 
     const account = accountName(env.CLAUDE_CONFIG_DIR);
     if (isLocalOnly(account, setting('LOCAL_ONLY', env))) throw new StartError(`account ${account} is local-only (CLOUD_PILOT_LOCAL_ONLY)`);
+    // An account whose last started session pushed nothing (no-push): never send it another session that cannot push.
+    const aside = setAsideOf(paths(hubDir(env)), account);
+    if (aside) throw new StartError(asideMessage(account, aside), { setAside: { account, ...aside } });
 
     const brief = readBrief(args);
     const cwd = resolve(args.cwd ?? process.cwd());
@@ -150,7 +170,7 @@ export async function main(argv, opts = {}) {
 
     const me = caller(env, cwd);
     const p = paths(hubDir(env));
-    const hub = track({ args, env, cwd, me, url: res.url, title, branch, p, spawnHub: opts.spawnHub });
+    const hub = track({ args, env, cwd, me, url: res.url, title, branch, p, spawnHub: opts.spawnHub, sessionId: res.sessionId, brief });
     logStart(p, { time: new Date().toISOString(), account, repo: me.gh, branch, title, session_id: res.sessionId, url: res.url });
     say({ ok: true, session_id: res.sessionId, url: res.url, account_dir: env.CLAUDE_CONFIG_DIR ?? '', account, repo: me.gh, branch, hub });
     return 0;
@@ -158,7 +178,7 @@ export async function main(argv, opts = {}) {
     if (handle) { try { await handle.stop(); } catch { /* already gone */ } }
     const extra = err instanceof StartError ? err.extra : {};
     const error = err instanceof StartError ? err.message : `unexpected error: ${err?.message ?? err}`;
-    say({ ok: false, error, ...(extra.prompt ? { prompt: extra.prompt } : {}), ...(extra.tail ? { tail: extra.tail } : {}) });
+    say({ ok: false, error, ...(extra.prompt ? { prompt: extra.prompt } : {}), ...(extra.tail ? { tail: extra.tail } : {}), ...(extra.setAside ? { set_aside: extra.setAside } : {}) });
     return 1;
   }
 }

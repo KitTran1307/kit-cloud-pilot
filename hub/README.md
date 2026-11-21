@@ -34,8 +34,8 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
   "no PRs".
 - Branch session events: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `question`, `question_unanswerable`
   (an ask edited after it was reported), `question_stale` (see below), `no-push` (urgent, once: a track registered
-  with its session link saw no branch, commit or PR 20 min after it was made; the event's `note` lists the usual
-  causes, such as a lapsed GitHub connection of the account that started it), `stalled` (1 h quiet),
+  with its session link saw no branch, commit or PR 20 min after it was made, or `CLOUD_PILOT_NO_PUSH_MIN`; see
+  "Accounts set aside" below), `stalled` (1 h quiet),
   `abandoned` (4 h quiet with no PR; 72 h with a PR waiting), `error` (3 failed rounds in a row, reported once).
 - A PR closed without GitHub's merge whose head commit is in its base branch (merged locally and pushed) is reported as
   `merged` with `landed: true` and `merged_sha: null`. The hub waits up to 15 min after the close for that push before
@@ -73,6 +73,18 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
   waiting on the same repo and account takes the track over; with nobody left, events are kept and a desktop
   notification is shown for urgent ones, at most once an hour per track.
 
+## Accounts set aside
+
+A started session that pushes nothing (`no-push`) most often means its account's GitHub connection on claude.ai
+lapsed: the session can work but can neither clone again nor push. The hub then sets that account aside
+(`accounts.json`) and `cloud-pilot start` refuses it with `{"ok":false,"set_aside":{...}}`, so no further session is
+sent where it cannot push. The `no-push` event carries `account`, `account_set_aside: true` and `brief_file` (the
+private copy of the brief `start` keeps), so the local session can take the work over. The account comes back by
+itself when a session of it pushes after all (a slow first push was not a lapsed connection), or when the person
+reconnects GitHub (https://claude.ai/connect-github, or `/web-setup` in that account) and runs
+`cloud-pilot account --ok <account>`. `cloud-pilot account` lists the accounts set aside; the kit-cloud band names
+this session's account when it is one of them.
+
 ## Settings (environment variables)
 
 | Variable | Effect |
@@ -80,16 +92,18 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
 | `CLOUD_PILOT_DIR` | Data folder (default `~/.claude/cloud-pilot`). |
 | `CLOUD_PILOT_NOTIFY=0` | No desktop notifications for tracks registered with it set (`CLOUD_PILOT_NO_TOAST=1` also works). |
 | `CLOUD_PILOT_DELETE_MERGED=1` | Tracks registered with it set delete their `claude/*` branch after the PR merges, only while the branch still points at the merged commit. Never for branches found by `watch`. Off by default. |
+| `CLOUD_PILOT_NO_PUSH_MIN` | Minutes a started session may go without a push before `no-push` (5 to 120, default 20). Shorter suits briefs whose first step is to push the branch. |
 | `CLOUD_PILOT_RELEASE_BRANCHES`, `CLOUD_PILOT_RELEASE_PATHS` | Release check of `track-repo --release-tree`: the branches as `main:release` (default) and a regular expression of the paths that need a release (default: all). |
 | `CLOUD_PILOT_ASK_PUBLIC_KEY`, `CLOUD_PILOT_ASK_KEY_FINGERPRINT` | Ed25519 public key (PEM path) and optional SPKI sha256 pin for verifying signed answers to `kit-channel` questions. Without a key every question counts as unanswered. |
 
-`CLOUD_PILOT_NOTIFY` and `CLOUD_PILOT_DELETE_MERGED` are stored on each track when it is registered. The others are read by
+`CLOUD_PILOT_NOTIFY`, `CLOUD_PILOT_DELETE_MERGED` and `CLOUD_PILOT_NO_PUSH_MIN` are stored on each track when it is registered. The others are read by
 the running hub: after changing them, `cloud-pilot stop` (the next `track`, `watch` or `wait` starts it again).
 
 ## Files (`CLOUD_PILOT_DIR`)
 
 `tracked.json` (tracks and their memory), `state.json` (the table `kit-cloud` and `status` read), `snapshots.json`,
-`etags.json`, `queue/<session>.json`, `waiters/<session>.<pid>.json`, `hub.pid` (pid and heartbeat every 30 s),
+`etags.json`, `queue/<session>.json`, `waiters/<session>.<pid>.json`, `accounts.json` (accounts set aside),
+`briefs/<session>.md` (the brief of each started session, deleted with its track), `hub.pid` (pid and heartbeat every 30 s),
 `hub.log` (rotated at 2 MB). Writes are atomic (temp file and rename); a file that cannot be read is retried and
 reported, never overwritten with an empty value.
 

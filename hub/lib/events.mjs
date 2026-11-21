@@ -3,6 +3,7 @@
 // Text that comes from GitHub (PR titles, bodies, comments, questions, the names of a PR's files) travels only in
 // `untrusted_*` fields: it is data for the waking session to weigh, never an instruction.
 import { currentPr } from './poll.mjs';
+import { RECONNECT_URL } from './accounts.mjs';
 
 export const QUIET_MS = 60 * 60_000; // branch track: no push/PR activity this long -> "stalled" (once per activity time)
 export const REPO_QUIET_MS = 45 * 60_000; // repo track: an open PR idle this long -> "quiet"
@@ -116,11 +117,14 @@ function branchTrack(track, now, nowMs) {
   } else {
     if (pr) events.push(...askEvents(track, pr, memo, nowMs), ...ciEvent(track, pr, memo));
     const age = nowMs - track.createdMs;
-    if (!pr && !memo.sawBranch && !memo.noPush && track.url && !track.discoveredBy && age >= NO_PUSH_MS && age < ABANDON_MS) {
+    if (!pr && !memo.sawBranch && !memo.noPush && track.url && !track.discoveredBy && age >= (track.noPushMs ?? NO_PUSH_MS) && age < ABANDON_MS) {
       memo.noPush = true;
+      const account = track.owner?.account;
       events.push(ev(track, 'no-push', {
         minutes: Math.round(age / 60000),
-        note: 'Nothing reached GitHub since this cloud session started: no branch, commit or PR. Open its link (url) to see why. Common causes: the account that started it lost its GitHub connection (reconnect GitHub on claude.ai/code, or run /web-setup in that account), the Claude GitHub App is not installed on the repository, or the session is waiting on a question or a permission on its own page. It may also simply not have pushed yet.',
+        ...(account ? { account } : {}),
+        ...(track.briefFile ? { brief_file: track.briefFile } : {}),
+        note: `Nothing reached GitHub since this cloud session started: no branch, commit or PR. Most often the account that started it lost its GitHub connection on claude.ai (reconnect at ${RECONNECT_URL}); it can also be a missing Claude GitHub App on this repository, a prompt waiting on the session's own page, or a first push that is simply late (a long first build). Take the work over locally if the person's rules say so${track.briefFile ? ' (the brief is in brief_file)' : ''}; then stop the cloud session so it does not push later.`,
       }, true));
     }
     const idle = nowMs - last;

@@ -441,3 +441,35 @@ describe('--help', () => {
     for (const flag of ['--cwd', '--brief-file', '--brief', '--branch', '--title', '--timeout', '--no-track', '--help']) assert.ok(text.includes(flag), flag);
   });
 });
+
+describe('accounts set aside after a no-push', () => {
+  test('start refuses an account set aside, says what to do, and starts nothing', { skip: !hasGit && 'git is not installed' }, async () => {
+    const s = setup();
+    writeFileSync(s.p.accounts, JSON.stringify({ work: { sinceMs: Date.parse('2026-11-21T08:13:00Z'), reason: 'no-push', url: 'https://claude.ai/code/session_OLD' } }));
+    const r = await run(main, ['--cwd', s.repo, '--brief', BRIEF], s.opts);
+    assert.equal(r.code, 1);
+    assert.equal(r.json.ok, false);
+    assert.match(r.json.error, /account work is set aside/);
+    assert.match(r.json.error, /cloud-pilot account --ok work/);
+    assert.equal(r.json.set_aside.url, 'https://claude.ai/code/session_OLD');
+    assert.equal(existsSync(s.record), false, 'claude was never started');
+  });
+
+  test('a start keeps a private copy of the brief for a local takeover, named by its session', { skip: !hasGit && 'git is not installed' }, async () => {
+    const s = setup();
+    writeFileSync(s.p.accounts, JSON.stringify({ home: { sinceMs: 1 } }));
+    const r = await run(main, ['--cwd', s.repo, '--brief', BRIEF], s.opts);
+    assert.equal(r.code, 0, 'another account set aside does not matter');
+    const file = join(s.dir, 'briefs', 'session_TEST123.md');
+    assert.equal(readFileSync(file, 'utf8'), BRIEF);
+    const track = readJsonFile(s.p.tracked).find((t) => t.url === r.json.url);
+    assert.ok(samePath(track.briefFile, file));
+  });
+
+  test('--no-track keeps no brief copy', { skip: !hasGit && 'git is not installed' }, async () => {
+    const s = setup();
+    const r = await run(main, ['--cwd', s.repo, '--brief', BRIEF, '--no-track'], s.opts);
+    assert.equal(r.code, 0);
+    assert.equal(existsSync(join(s.dir, 'briefs', 'session_TEST123.md')), false);
+  });
+});
