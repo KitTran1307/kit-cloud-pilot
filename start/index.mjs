@@ -137,7 +137,9 @@ export async function main(argv, opts = {}) {
     const account = accountName(env.CLAUDE_CONFIG_DIR);
     if (isLocalOnly(account, setting('LOCAL_ONLY', env))) throw new StartError(`account ${account} is local-only (CLOUD_PILOT_LOCAL_ONLY)`);
     // An account whose last started session pushed nothing (no-push): never send it another session that cannot push.
-    const aside = setAsideOf(paths(hubDir(env)), account);
+    // An unreadable data folder never blocks a start: the hub's own problems are reported after it, as before.
+    let aside = null;
+    try { aside = setAsideOf(paths(hubDir(env)), account); } catch { aside = null; }
     if (aside) throw new StartError(asideMessage(account, aside), { setAside: { account, ...aside } });
 
     const brief = readBrief(args);

@@ -1,6 +1,6 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { main } from '../index.mjs';
 import { isAlive, paths } from '../../hub/lib/store.mjs';
@@ -464,6 +464,14 @@ describe('accounts set aside after a no-push', () => {
     assert.equal(readFileSync(file, 'utf8'), BRIEF);
     const track = readJsonFile(s.p.tracked).find((t) => t.url === r.json.url);
     assert.ok(samePath(track.briefFile, file));
+  });
+
+  test('an unreadable accounts file never blocks a start (any OS)', { skip: !hasGit && 'git is not installed' }, async () => {
+    const s = setup();
+    mkdirSync(s.p.accounts, { recursive: true }); // a folder where the file should be: every read fails
+    const r = await run(main, ['--cwd', s.repo, '--brief', BRIEF], s.opts);
+    assert.equal(r.code, 0);
+    assert.equal(r.json.ok, true);
   });
 
   test('--no-track keeps no brief copy', { skip: !hasGit && 'git is not installed' }, async () => {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1
+
+- **Fix:** on macOS and Linux, `cloud-pilot start` failed when its data folder could not be read (1.5.0's check for
+  accounts set aside). An unreadable folder never blocks a start again, as before 1.5.0.
+
 ## 1.5.0
 
 - **No more cloud sessions where they cannot push.** When a started session pushes nothing (`no-push`), its account is
