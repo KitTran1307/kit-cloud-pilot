@@ -80,6 +80,17 @@ function ciEvent(track, pr, memo) {
   return [ev(track, 'ci-failed', { pr: pr.number, pr_url: pr.url, head: pr.headSha.slice(0, 9) }, true)];
 }
 
+// A merge conflict, once per PR head (a new push that still conflicts is reported again). base_ref is a name from
+// GitHub: it is passed on only in the shape of a plain branch name.
+function conflictEvent(track, pr, memo) {
+  if (pr.mergeState === 'clean') delete memo.conflict; // resolved: a conflict that comes back on the same head is new
+  if (pr.state !== 'open' || pr.mergeState !== 'dirty' || memo.conflict === pr.headSha) return [];
+  memo.conflict = pr.headSha;
+  const base = pr.baseRef;
+  const safe = typeof base === 'string' && base.length <= 100 && /^[\w./-]+$/.test(base) && !base.includes('..') && !/^[-/]/.test(base);
+  return [ev(track, 'conflict', { pr: pr.number, pr_url: pr.url, head: pr.headSha.slice(0, 9), ...(safe ? { base_ref: base } : {}) }, true)];
+}
+
 function branchTrack(track, now, nowMs) {
   const memo = { ...(track.memo ?? {}) };
   const events = [];
@@ -115,7 +126,7 @@ function branchTrack(track, now, nowMs) {
     active = false;
     view = { state: 'gone', detail: 'branch deleted' };
   } else {
-    if (pr) events.push(...askEvents(track, pr, memo, nowMs), ...ciEvent(track, pr, memo));
+    if (pr) events.push(...askEvents(track, pr, memo, nowMs), ...ciEvent(track, pr, memo), ...conflictEvent(track, pr, memo));
     const age = nowMs - track.createdMs;
     if (!pr && !memo.sawBranch && !memo.noPush && track.url && !track.discoveredBy && age >= (track.noPushMs ?? NO_PUSH_MS) && age < ABANDON_MS) {
       memo.noPush = true;
@@ -141,7 +152,7 @@ function branchTrack(track, now, nowMs) {
       const mins = Math.round(idle / 60000);
       if (pr && (pr.asks ?? []).length) view = { state: 'question', detail: `PR #${pr.number} · asking` };
       else if (pr && pr.state === 'open' && staleNow(pr, nowMs).length) view = { state: 'question', detail: `PR #${pr.number} · answer is for an older commit` };
-      else if (pr) view = { state: 'pr', detail: `PR #${pr.number}${pr.ci === 'pending' ? ' · CI running' : pr.ci === 'failure' ? ' · CI failed' : pr.ci === 'success' ? ' · CI passed' : ''}` };
+      else if (pr) view = { state: 'pr', detail: `PR #${pr.number}${pr.ci === 'pending' ? ' · CI running' : pr.ci === 'failure' ? ' · CI failed' : pr.ci === 'success' ? ' · CI passed' : ''}${pr.mergeState === 'dirty' ? ' · conflicts' : ''}` };
       else if (idle >= 30 * 60_000) view = { state: 'silent', detail: br?.exists ? `silent ${mins} min` : `silent ${mins} min (nothing pushed)` };
       else view = { state: 'working', detail: br?.exists ? `pushed ${mins} min ago` : 'just started' };
     }

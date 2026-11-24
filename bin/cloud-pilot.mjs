@@ -12,6 +12,7 @@
 //   cloud-pilot channel keygen|fingerprint|setup <repo>|ask|wait   signed question channel
 //   cloud-pilot questions --repo owner/name --pr N [--all]   open questions with their question_sha256
 //   cloud-pilot answer --repo owner/name --pr N --id <id> --question-sha256 <hash> --answer "<text>"
+//   cloud-pilot nudge --id <trackId> | --repo owner/name --pr N [--text "<message>"]   tell a tracked cloud session something now
 //   cloud-pilot version
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -32,7 +33,8 @@ export async function main(argv) {
   if (!verb || verb === 'help' || verb === '--help' || verb === '-h') { console.log(USAGE); return verb ? 0 : 1; }
   if (verb === 'version' || verb === '--version') { console.log(JSON.stringify({ ok: true, version: version(), root: ROOT })); return 0; }
   if (verb === 'start') return (await import('../start/index.mjs')).main(rest);
-  if (verb === 'channel') return (await import('../channel/index.mjs')).main(rest);
+  if (verb === 'nudge') return (await import('../hub/nudge.mjs')).runNudge(rest);
+  if (verb === 'channel')return (await import('../channel/index.mjs')).main(rest);
   if (verb === 'questions') return (await import('../channel/index.mjs')).main(['questions', ...rest]);
   if (verb === 'answer') return (await import('../channel/index.mjs')).main(['answer', ...rest]);
   if (HUB_VERBS.has(verb)) {

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.7.0
+
+- **Alerts on your phone, off by default.** Set `CLOUD_PILOT_NOTIFY_CMD` (a command of your own) or
+  `CLOUD_PILOT_NTFY_TOPIC` (built-in ntfy) and the hub tells you when a session asks a question, CI fails, a PR has
+  conflicts, nothing was pushed, a PR merges or a track is abandoned (`CLOUD_PILOT_NOTIFY_KINDS` picks the kinds). Only
+  the kind, repository, branch, PR number and a link are sent, never GitHub text. The public ntfy.sh is readable by
+  anyone who knows the topic: pick a long random one or self-host (`CLOUD_PILOT_NTFY_URL`).
+- **New event `conflict`** (urgent): an open PR of a tracked branch has merge conflicts with its base. Once per commit.
+- **Failed CI and conflicts go back to the session that made them.** The hub sends it one short notice (fix, run the
+  checks, push, do not merge), at most twice per commit and kind. The event's `autofix` field says whether it was sent
+  and, if not, why, so the local session knows when to step in. Off: `CLOUD_PILOT_AUTOFIX=0`.
+- **`cloud-pilot nudge`** sends a message (by default a status check) to a tracked cloud session now.
+- Self-handling stops by itself: at most 2 notices per commit, 4 per session in all, and none within 30 minutes
+  of the last, so a check the session cannot fix never turns into a loop.
+- Alerts carry only plain links (the query of a session link is dropped), so a shell command such as
+  `curl %CLOUD_PILOT_EVENT_URL%` cannot be tricked into running more; on Windows a hung command is ended with its
+  children and no console window opens.
+
 ## 1.6.1
 
 - **Answers reach sessions started anywhere.** A cloud session that cloud-pilot did not start (the desktop app, the

@@ -25,7 +25,7 @@ test('version and help', () => {
   assert.match(v.version, /^\d+\.\d+\.\d+$/);
   const help = run(['help']);
   assert.equal(help.code, 0);
-  for (const verb of ['start', 'track', 'watch', 'wait', 'status', 'channel', 'answer']) assert.match(help.out, new RegExp(`cloud-pilot ${verb}\\b`));
+  for (const verb of ['start', 'track', 'watch', 'wait', 'status', 'channel', 'answer', 'nudge']) assert.match(help.out, new RegExp(`cloud-pilot ${verb}\\b`));
   assert.equal(run([]).code, 1, 'no command: usage and a failing exit');
 });
 

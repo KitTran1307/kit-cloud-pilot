@@ -12,6 +12,16 @@
 - **Tokens:** `gh auth token` answers stay in memory and reach `gh` as `GH_TOKEN`; they are never written or logged.
 - **Writes on GitHub:** answer comments you ask for, and, only with `CLOUD_PILOT_DELETE_MERGED=1`, deleting a merged
   `claude/*` branch you tracked yourself while it still points at the merged commit.
+- **Alerts (off unless you set them):** `CLOUD_PILOT_NOTIFY_CMD` is your own command, run with your permissions and
+  read only from your environment, never from a repository. It and the optional ntfy post get only the event kind,
+  repository, branch, PR number, a link (session, else PR) and an urgent flag, each checked against a strict pattern;
+  never a PR title or any text written on GitHub. The command gets them as environment variables, is not waited for
+  and is killed after 15 s. On the public ntfy.sh anyone who knows or guesses the topic name can read what is posted
+  (repository name, PR number, link): the topic is a secret only by obscurity, so use a long random one or host ntfy
+  yourself. No token or sign-in is used or read.
+- **Auto-handling:** to a session whose CI failed or whose PR has conflicts, the hub sends one fixed sentence written by
+  the plugin (repository, PR number, commit, base branch name; no GitHub text), at most twice per commit, as the
+  account that started the session. Off with `CLOUD_PILOT_AUTOFIX=0`.
 - **Signing key:** Ed25519, created by `channel keygen` outside any git working tree (refused inside one), never
   printed, never copied by `channel setup` (which installs only the public key and its fingerprint).
 - **Untrusted text:** titles, comments and questions from GitHub are passed on only as `untrusted_*` fields with

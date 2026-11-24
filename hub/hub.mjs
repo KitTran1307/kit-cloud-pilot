@@ -25,6 +25,8 @@ import { snapshot } from './lib/poll.mjs';
 import { trackEvents, trackTitle } from './lib/events.mjs';
 import { route, ownerAlive } from './lib/route.mjs';
 import { toast } from './lib/notify.mjs';
+import { alertEvents } from './lib/alerts.mjs';
+import { startAutofix } from './lib/autofix.mjs';
 import { resolveExe, safeCwd } from './lib/exe.mjs';
 import { loadPublicKey } from './lib/asks.mjs';
 import { setting } from './lib/config.mjs';
@@ -417,7 +419,7 @@ export const TOAST_EVERY_MS = 3600_000; // at most one toast per track per hour
 export const PARK_REPO_AFTER_MS = 12 * 3600_000; // a repo track with nobody alive this long stops (no endless polling)
 
 // Call inside withLock: deliver a track's events (owner, heir, or orphaned + a rate-limited toast).
-function deliver(p, t, events, waiters, { nowMs, aliveFn, notify }) {
+function deliver(p, t, events, waiters, { nowMs, aliveFn, notify, alert, env }) {
   const dest = route(t, waiters, aliveFn);
   const handed = dest.newOwner && dest.newOwner.sessionId !== t.owner?.sessionId;
   if (handed) {
@@ -427,6 +429,8 @@ function deliver(p, t, events, waiters, { nowMs, aliveFn, notify }) {
   if (dest.newOwner) t.owner = dest.newOwner;
   enqueue(p, dest.to, events.map((e) => ({ ...e, at: nowMs, account: t.owner?.account, ...(handed ? { handed_over: true } : {}) })));
   log(p, `events ${t.id} -> ${dest.to}: ${events.map((e) => e.kind).join(',')}`);
+  // Phone / command alerts (opt-in, see alerts.mjs): started now, never waited for, never fail the delivery.
+  try { alert(events, { env, log: (line) => log(p, line) }); } catch (err) { log(p, `alert failed: ${String(err?.message ?? err).slice(0, 200)}`); }
   if (dest.orphaned) {
     t.orphanedSinceMs ??= nowMs;
     const urgent = events.some((e) => e.urgent);
@@ -438,13 +442,16 @@ function deliver(p, t, events, waiters, { nowMs, aliveFn, notify }) {
   } else delete t.orphanedSinceMs;
 }
 
-// One poll of every repo with active tracks. Injected for tests: api, publicKey, nowMs, notify, aliveFn, cleanup.
-export function pollOnce(p, { api, publicKey = null, nowMs = Date.now(), notify = toast, aliveFn = isAlive, cleanup } = {}) {
+// One poll of every repo with active tracks. Injected for tests: api, publicKey, nowMs, notify, aliveFn, cleanup, env,
+// alert (phone alerts), autofix (tell the session to fix its failed CI or conflict).
+export function pollOnce(p, {
+  api, publicKey = null, nowMs = Date.now(), notify = toast, aliveFn = isAlive, cleanup, env = process.env, alert = alertEvents, autofix = startAutofix,
+} = {}) {
   const active = readJson(p.tracked, []).filter((t) => t.active);
   const snaps = readJson(p.snapshots, {}, { cache: true });
   const errors = {};
   const waiters = liveWaiters(p, aliveFn);
-  const ctx = { nowMs, aliveFn, notify };
+  const ctx = { nowMs, aliveFn, notify, alert, env };
   for (const repo of [...new Set(active.map((t) => t.repo))]) {
     let tracks = active.filter((t) => t.repo === repo);
     try {
@@ -506,6 +513,17 @@ export function pollOnce(p, { api, publicKey = null, nowMs = Date.now(), notify 
         t.lastPolledMs = nowMs;
         if (!r.active) { t.active = false; t.endedMs = nowMs; }
         if (r.events.length) {
+          // A failed CI or a merge conflict of a branch track goes back to the session that made the PR (at most twice
+          // per commit). Started in the background; the event says whether a notice was dispatched.
+          if (t.kind === 'branch') {
+            for (const e of r.events) {
+              if (e.kind !== 'ci-failed' && e.kind !== 'conflict') continue;
+              try { e.autofix = autofix(t, e, now.prs?.[t.branch], { env, nowMs, log: (line) => log(p, line) }); } catch (err) {
+                log(p, `autofix ${t.id} failed: ${String(err?.message ?? err).slice(0, 200)}`);
+                e.autofix = { sent: false, reason: 'autofix failed (see hub.log)' };
+              }
+            }
+          }
           try { deliver(p, t, r.events, waiters, ctx); } catch (err) { log(p, `deliver ${t.id} failed: ${err.message}`); }
         }
         else if (!ownerAlive(t, waiters, aliveFn)) t.orphanedSinceMs ??= nowMs;
@@ -654,7 +672,9 @@ function heartbeat(p, startedMs, nowMs = Date.now()) {
   writeJson(p.pid, { pid: process.pid, startedMs, heartbeatMs: nowMs, script: fileURLToPath(import.meta.url) });
 }
 
-function cmdDaemon(p) {
+// Async so that between polls the event loop runs: phone alerts, autofix sends and their timeouts are promises and
+// timers, which a synchronous sleep would freeze. Each poll itself is still one synchronous pass.
+async function cmdDaemon(p) {
   if (hubAlive(p)) return;
   const startedMs = Date.now();
   heartbeat(p, startedMs);
@@ -707,7 +727,7 @@ function cmdDaemon(p) {
         log(p, `loop error: ${String(err.stack || err).split('\n').slice(0, 4).join(' | ')}`);
         nextPoll = Date.now() + 30_000;
       }
-      sleep(TICK_MS);
+      await new Promise((resolve) => { setTimeout(resolve, TICK_MS); });
     }
   } finally {
     try {
@@ -791,7 +811,7 @@ export function main(argv, p = paths()) {
       console.log(JSON.stringify({ ok: true, wasRunning: Boolean(hubAlive(p)) }));
       return;
     case 'daemon':
-      cmdDaemon(p);
+      cmdDaemon(p).catch((err) => { log(p, `daemon crashed: ${String(err?.stack || err).split('\n').slice(0, 3).join(' | ')}`); process.exitCode = 1; });
       return;
     default:
       throw new Error('usage: hub.mjs track|track-repo|watch|unwatch|untrack|wait|status|stop|doctor|daemon (see the header)');

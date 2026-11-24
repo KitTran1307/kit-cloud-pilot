@@ -14,7 +14,7 @@ something.
 you ──► local Claude (CLI) ──cloud-pilot start──► cloud session ──► claude/<branch> + pull request on GitHub
               ▲                                                            │
               └──────── cloud-pilot wait ◄── hub (one process, polls GitHub, cached) ◄──┘
-                         events: pr-opened · ci-failed · question · merged · stalled ...
+                         events: pr-opened · ci-failed · conflict · question · merged · stalled ...
 ```
 
 Want to *see* the sessions above the prompt? Add the optional band,
@@ -65,10 +65,36 @@ cloud-pilot wait                                         # in the background: re
 | `wait [--max-min 240]` | Wait for this session's events; one JSON line |
 | `status [--json]`, `untrack --id`, `stop`, `doctor` | What is tracked; stop tracking; stop the hub; check the machine |
 | `channel setup <repo> --write`, `channel keygen` | Let a repo's cloud sessions ask you questions ([channel/README.md](channel/README.md)) |
+| `nudge --id <trackId>` or `--repo o/n --pr N` `[--text]` | Send a message to a tracked cloud session now (default: a status check); prints `{sent, session_url, reason}` |
 | `questions --repo --pr [--all]` | List a PR's open questions with the `question_sha256` that `answer` needs |
 | `answer --repo --pr --id --question-sha256 --answer` | Answer a question with a signed comment, then tell the session that asked to read it |
 
 In a session, `/pilot` shows what is tracked, `/pilot doctor` checks the machine.
+
+When a tracked pull request fails CI or has merge conflicts with its base branch (event `conflict`), the hub tells the
+cloud session that made it, once or twice per commit, to fix it and push (not merge). Nothing to set up; turn it off
+with `CLOUD_PILOT_AUTOFIX=0`. The event says whether that notice went out (`autofix.sent`), so your local session
+knows whether to step in.
+
+### Alerts on your phone
+
+Off by default: you get nothing unless you set one of these. You are told when a session asks a question, CI fails,
+a pull request has conflicts, nothing was pushed, a PR merges or a track is abandoned (`CLOUD_PILOT_NOTIFY_KINDS`
+changes the list).
+
+```
+# your own script (it gets CLOUD_PILOT_EVENT_KIND, _REPO, _BRANCH, _PR, _URL and _URGENT as environment variables)
+CLOUD_PILOT_NOTIFY_CMD=~/bin/tell-me.sh
+
+# or the built-in ntfy (https://ntfy.sh) for people with no script
+CLOUD_PILOT_NTFY_TOPIC=pick-20-or-more-random-characters-here
+```
+
+Set them in the `env` block of `~/.claude/settings.json`. The hub reads them when it starts, so after a change run
+`cloud-pilot stop`; the next `wait` starts it again. An alert carries only the kind, repository, branch, PR number and
+a link, never a PR title or any text written on GitHub. **On the public ntfy.sh anyone who knows or guesses the topic
+name can read what is posted to it** (repository name, PR number, link): use a long random topic or run your own ntfy
+server (`CLOUD_PILOT_NTFY_URL`). No sign-in or token is used.
 
 ## Settings
 
@@ -78,7 +104,11 @@ Environment variables (for example in the `env` block of `~/.claude/settings.jso
 | --- | --- |
 | `CLOUD_PILOT_DIR` | Data folder (default `~/.claude/cloud-pilot`) |
 | `CLOUD_PILOT_LOCAL_ONLY` | Comma list of accounts that never start cloud sessions (`default` = `~/.claude`, `work` = `~/.claude-work`) |
-| `CLOUD_PILOT_NOTIFY=0` | No desktop notifications |
+| `CLOUD_PILOT_NOTIFY=0` | No desktop notifications (does not affect the alerts below) |
+| `CLOUD_PILOT_NOTIFY_CMD` | A command of your own the hub runs for each alert event (see above); not waited for, stopped after 15 s, failures only go to `hub.log` |
+| `CLOUD_PILOT_NOTIFY_KINDS` | Event kinds that alert (default `question,question_stale,ci-failed,conflict,no-push,merged,abandoned`) |
+| `CLOUD_PILOT_NTFY_TOPIC`, `CLOUD_PILOT_NTFY_URL` | Send alerts to an ntfy topic (letters, digits, `-`, `_`, up to 64); server default `https://ntfy.sh` (`http` or `https`) |
+| `CLOUD_PILOT_AUTOFIX=0` | The hub does not tell a session to fix its own failed CI or merge conflict |
 | `CLOUD_PILOT_DELETE_MERGED=1` | Delete a tracked `claude/*` branch after its PR merges (only while it still points at the merged commit; never branches found by `watch`) |
 | `CLOUD_PILOT_NO_PUSH_MIN` | Minutes a started session may go without pushing before `no-push` sets its account aside (5-120, default 20) |
 | `CLOUD_PILOT_KEY_DIR`, `CLOUD_PILOT_PRIVATE_KEY` | Where the question channel's signing key lives (default `~/.cloud-pilot/keys`), or an existing key file |

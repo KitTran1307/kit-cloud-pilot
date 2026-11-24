@@ -6,6 +6,7 @@ import { resolveExe, safeCwd } from './exe.mjs';
 import {
   pendingQuestions, staleQuestions, stripHidden, fileNames, isAgentConfigPath, PR_FILES_PAGE, PR_FILES_PAGES,
 } from './asks.mjs';
+import { sessionFromBody } from './send.mjs';
 
 const toMs = (iso) => (iso ? Date.parse(iso) : NaN);
 
@@ -100,7 +101,17 @@ function prFact(p) {
     flag: stripHidden(String(p.body ?? '').split('\n').find((l) => l.trim()) ?? '').slice(0, 300),
     author: p.user?.login ?? '', headSha: p.head?.sha ?? '', createdAt: p.created_at, closedAt: p.closed_at ?? null,
     updatedMs: toMs(p.updated_at), headRepo: headRepoOf(p), baseRef: typeof p.base?.ref === 'string' ? p.base.ref : '',
+    // The cloud session that made the PR, from the link Claude Code ends its body with (an id only, never body text).
+    sessionId: sessionFromBody(p.body)?.sessionId ?? '',
   };
+}
+
+// GitHub's mergeable_state of one PR ('dirty' = merge conflict); '' when unknown or unreadable. Only the enum word is kept.
+function mergeStateOf(api, repo, number) {
+  try {
+    const s = api.get(`repos/${repo}/pulls/${number}`)?.mergeable_state;
+    return typeof s === 'string' && /^[a-z_]{1,30}$/.test(s) ? s : '';
+  } catch { return ''; }
 }
 
 // A PR closed without GitHub's merge whose head commit is already in its base branch (merged locally and pushed, the
@@ -188,6 +199,9 @@ export function snapshot(api, repo, tracks, { nowMs = Date.now(), publicKey = nu
   for (const [ref, pr] of Object.entries(prs)) {
     if (!pr.outOfWindow) landedCheck(api, repo, pr, prev?.prs?.[ref], nowMs);
     if (pr.state !== 'open' || pr.outOfWindow) continue;
+    // Merge state only for the open PR a branch track follows: the list call does not carry it, the single-PR call
+    // does (cached: usually a 304). Best effort; 'unknown' (GitHub computes lazily after a push) is asked again next poll.
+    if (branchTracks.some((t) => t.branch === ref && current[t.id])) pr.mergeState = mergeStateOf(api, repo, pr.number);
     const before = prev?.prs?.[ref];
     // A comment (or an edit, or a push) moves the PR's updated_at, so an unchanged PR keeps its comment facts and
     // costs no call. CI does not move updated_at: it is read again while it may still change (new head, pending,

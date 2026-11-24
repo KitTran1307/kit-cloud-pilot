@@ -320,7 +320,7 @@ test('snapshot reuses an unchanged PR: one call per repo when nothing moved; CI 
   assert.equal(s1.prs['claude/hud'].ci, 'pending');
   const n1 = api.calls.length;
   const s2 = snapshot(api, REPO, tracks, { nowMs: T0 + 32 * MIN, prev: s1 });
-  assert.deepEqual(api.calls.slice(n1).map((c) => c.split('?')[0].split('/').slice(-2).join('/')), [`${REPO.split('/')[1]}/pulls`, 'branches/claude%2Fhud', 'abc123def456/check-runs', 'abc123def456/status'], 'comments skipped, pending CI re-read');
+  assert.deepEqual(api.calls.slice(n1).map((c) => c.split('?')[0].split('/').slice(-2).join('/')), [`${REPO.split('/')[1]}/pulls`, 'branches/claude%2Fhud', 'pulls/7', 'abc123def456/check-runs', 'abc123def456/status'], 'comments skipped, pending CI re-read, the open PR read for merge conflicts');
   ci = { check_runs: [{ status: 'completed', conclusion: 'success' }] };
   const n2 = api.calls.length;
   const s3 = snapshot(api, REPO, tracks, { nowMs: T0 + 34 * MIN, prev: s2 });
@@ -328,8 +328,8 @@ test('snapshot reuses an unchanged PR: one call per repo when nothing moved; CI 
   assert.equal(s3.prs['claude/hud'].comments, 1, 'comment facts carried over');
   const n3 = api.calls.length;
   snapshot(api, REPO, tracks, { nowMs: T0 + 36 * MIN, prev: s3 });
-  assert.equal(api.calls.length - n3, 2, 'settled CI + unchanged PR = the PR list + the branch tip');
-  assert.ok(n3 - n2 === 4);
+  assert.equal(api.calls.length - n3, 3, 'settled CI + unchanged PR = the PR list + the branch tip + the open PR (merge conflicts)');
+  assert.ok(n3 - n2 === 5);
   // no checks at all: read until CI_SETTLE_MS after the head was first seen, then stop
   ci = { check_runs: [] };
   const api2 = fakeApi({
@@ -340,7 +340,7 @@ test('snapshot reuses an unchanged PR: one call per repo when nothing moved; CI 
   s = snapshot(api2, REPO, tracks, { nowMs: T0 + CI_SETTLE_MS + MIN, prev: s });
   const before = api2.calls.length;
   snapshot(api2, REPO, tracks, { nowMs: T0 + CI_SETTLE_MS + 3 * MIN, prev: s });
-  assert.equal(api2.calls.length - before, 2);
+  assert.equal(api2.calls.length - before, 3);
 });
 
 test('nextInterval: 2 min while something moves, 5 min when every track is quiet', async () => {

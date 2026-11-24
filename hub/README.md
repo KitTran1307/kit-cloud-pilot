@@ -32,11 +32,24 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
 - Each repo is read with its owner's own `gh` login when `gh` holds several accounts, else the active one. Tokens stay
   in memory (passed to `gh` as `GH_TOKEN`), never written or logged. A 404 on a PR list is an error (no access), never
   "no PRs".
-- Branch session events: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `question`, `question_unanswerable`
+- Branch session events: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `conflict` (urgent, once per head commit: the open PR of a tracked branch has merge conflicts with its
+  base, GitHub's `mergeable_state` `dirty`, read with one cached PR call per open tracked PR; fields `pr`, `pr_url`, `head`,
+  `base_ref` when it is a plain branch name), `question`, `question_unanswerable`
   (an ask edited after it was reported), `question_stale` (see below), `no-push` (urgent, once: a track registered
   with its session link saw no branch, commit or PR 20 min after it was made, or `CLOUD_PILOT_NO_PUSH_MIN`; see
   "Accounts set aside" below), `stalled` (1 h quiet),
   `abandoned` (4 h quiet with no PR; 72 h with a PR waiting), `error` (3 failed rounds in a row, reported once).
+- Auto-handling (on; `CLOUD_PILOT_AUTOFIX=0` turns it off): on `ci-failed` or `conflict` of a branch track (not whole-repo
+  tracks) whose cloud session is known (the link from `start` / `track --url`, else the one at the end of the PR body),
+  the hub sends that session one fixed notice written by the plugin (repository, PR number, commit, base branch name; no
+  GitHub text): read the failing checks or merge the base branch in, fix, run the checks, push, do not merge. At most 2 per
+  head commit and kind. It is `claude -p "<notice>" --cloud <session>` as the account that started the session, in the
+  background; the event carries `autofix: {sent, reason}` and the outcome goes to `hub.log`.
+- Alerts (off unless set): for each event whose kind is in `CLOUD_PILOT_NOTIFY_KINDS` the hub runs
+  `CLOUD_PILOT_NOTIFY_CMD` and/or posts to ntfy. Neither is waited for; the command is killed after 15 s and failures
+  only go to `hub.log`. See the settings below.
+- `cloud-pilot nudge --id <trackId> | --repo owner/name --pr N [--text "<message>"]` sends a message to a track's cloud
+  session now and prints `{sent, session_url, reason}` (exit 0 even when not sent, 1 for bad arguments).
 - A PR closed without GitHub's merge whose head commit is in its base branch (merged locally and pushed) is reported as
   `merged` with `landed: true` and `merged_sha: null`. The hub waits up to 15 min after the close for that push before
   it reports `closed`. The merged-branch cleanup (`deleteMerged`) only ever deletes a branch after a `merged` event, and
@@ -92,11 +105,15 @@ this session's account when it is one of them.
 | `CLOUD_PILOT_DIR` | Data folder (default `~/.claude/cloud-pilot`). |
 | `CLOUD_PILOT_NOTIFY=0` | No desktop notifications for tracks registered with it set (`CLOUD_PILOT_NO_TOAST=1` also works). |
 | `CLOUD_PILOT_DELETE_MERGED=1` | Tracks registered with it set delete their `claude/*` branch after the PR merges, only while the branch still points at the merged commit. Never for branches found by `watch`. Off by default. |
+| `CLOUD_PILOT_NOTIFY_CMD` | A command of your own, run once per alert event with `CLOUD_PILOT_EVENT_KIND`, `_REPO`, `_BRANCH`, `_PR`, `_URL` (session link, else PR link) and `_URGENT` (1/0) in its environment, never a PR title or other GitHub text. Not waited for, killed after 15 s, failures logged. Read from the environment only, never from a repository. Off by default. |
+| `CLOUD_PILOT_NOTIFY_KINDS` | Event kinds that alert (default `question,question_stale,ci-failed,conflict,no-push,merged,abandoned`). |
+| `CLOUD_PILOT_NTFY_TOPIC`, `CLOUD_PILOT_NTFY_URL` | Built-in ntfy: POSTs a line like `ci-failed · owner/repo#7` to the topic (letters, digits, `-`, `_`, up to 64) on the server (default `https://ntfy.sh`; `http` or `https`), with a `Click` header holding the link (left out if it has non-ASCII characters). On the public ntfy.sh anyone who knows the topic can read it: use a long random topic or your own server. No token is used. `CLOUD_PILOT_NOTIFY=0` does not affect these. |
+| `CLOUD_PILOT_AUTOFIX=0` | No notice to a session about its failed CI or conflict. |
 | `CLOUD_PILOT_NO_PUSH_MIN` | Minutes a started session may go without a push before `no-push` (5 to 120, default 20). Shorter suits briefs whose first step is to push the branch. |
 | `CLOUD_PILOT_RELEASE_BRANCHES`, `CLOUD_PILOT_RELEASE_PATHS` | Release check of `track-repo --release-tree`: the branches as `main:release` (default) and a regular expression of the paths that need a release (default: all). |
 | `CLOUD_PILOT_ASK_PUBLIC_KEY`, `CLOUD_PILOT_ASK_KEY_FINGERPRINT` | Ed25519 public key (PEM path) and optional SPKI sha256 pin for verifying signed answers to `kit-channel` questions. Without a key every question counts as unanswered. |
 
-`CLOUD_PILOT_NOTIFY`, `CLOUD_PILOT_DELETE_MERGED` and `CLOUD_PILOT_NO_PUSH_MIN` are stored on each track when it is registered. The others are read by
+`CLOUD_PILOT_NOTIFY`, `CLOUD_PILOT_DELETE_MERGED` and `CLOUD_PILOT_NO_PUSH_MIN` are stored on each track when it is registered. The others (alerts and auto-handling included) are read by
 the running hub: after changing them, `cloud-pilot stop` (the next `track`, `watch` or `wait` starts it again).
 
 ## Files (`CLOUD_PILOT_DIR`)
