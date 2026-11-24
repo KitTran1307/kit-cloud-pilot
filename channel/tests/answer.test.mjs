@@ -185,7 +185,7 @@ test('answer.mjs bad arguments fail', () => {
 
 const privatePem = () => KEYS.privateKey.export({ type: 'pkcs8', format: 'pem' });
 const keyBody = () => privatePem().split('\n').filter((l) => l && !l.startsWith('-----')).join('');
-const cliDeps = (gh, env, cap) => ({ env, out: cap.out, errOut: () => {}, api: gh.api, now: () => T0 + MIN, account: () => 'tester' });
+const cliDeps = (gh, env, cap, nudge = async () => ({ sent: false, reason: 'test' })) => ({ env, out: cap.out, errOut: () => {}, api: gh.api, now: () => T0 + MIN, account: () => 'tester', nudge });
 
 test('runAnswer loads the private key from CLOUD_PILOT_KEY_DIR, posts a verifiable answer and never prints the key', async () => {
   const dir = tmpDir('cloudpilot-keys-');

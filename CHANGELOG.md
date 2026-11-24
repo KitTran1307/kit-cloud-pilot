@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.0
+
+- **Answers reach a cloud session that stopped looking.** A cloud session that asked a question and then ended its
+  turn never read the PR again, so a posted answer could sit unread for hours. `cloud-pilot answer` now also tells
+  the session that asked (found among the tracked sessions) to read it, with `claude -p "<notice>" --cloud <session>`
+  as the account that started it (tracks registered from 1.6.0 on record it; older ones use the current account). The notice holds no answer and approves nothing: the session still acts only on the
+  signed answer its own `wait` prints. The result is in the output's `nudge` field (with the `notice` to send by
+  hand when it could not be sent); the answer never fails because of it. Off: `CLOUD_PILOT_NUDGE=0`.
+- The skill says how to see what a silent session is doing (`RemoteTrigger`'s `get_run_log` with its session id)
+  and that `claude -p … --cloud` is the dependable way to message one; Claude Code's own `SendMessage` reaches cloud
+  sessions only while Remote Control is on.
+- **Windows:** the hub waits longer (up to about 4 s) for a file a scanner holds before a state write fails.
+
 ## 1.5.1
 
 - **Fix:** on macOS and Linux, `cloud-pilot start` failed when its data folder could not be read (1.5.0's check for

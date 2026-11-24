@@ -103,6 +103,8 @@ export function caller(env = process.env, cwd = process.cwd()) {
     sessionId: env.CLAUDE_CODE_SESSION_ID || `manual-${process.ppid}`,
     pid: Number(env.CLAUDE_PID) || process.ppid,
     account: accountName(env.CLAUDE_CONFIG_DIR),
+    // Which Claude config started it, so a later `answer` can message the cloud session as the same account.
+    ...(env.CLAUDE_CONFIG_DIR ? { configDir: env.CLAUDE_CONFIG_DIR } : {}),
     repoRoot,
     gh: ghSlug(git(cwd, ['remote', 'get-url', 'origin'])),
   };

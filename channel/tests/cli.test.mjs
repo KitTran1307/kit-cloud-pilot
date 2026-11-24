@@ -10,7 +10,8 @@ import * as hub from '../../hub/lib/asks.mjs';
 import { questionSha256 } from '../cloud/channel.mjs';
 import { T0, MIN, REPO, PR, ID, QUESTION, CHANNEL_DIR, tmpDir, fakeRepo, askC, fakeGithub, clockDeps, capture, iso, walk } from './helpers.mjs';
 
-const keyEnv = () => ({ CLOUD_PILOT_KEY_DIR: path.join(tmpDir('cloudpilot-keys-'), 'keys') });
+// CLOUD_PILOT_NUDGE=0: a posted answer must never look at the real hub folder or start a real claude.
+const keyEnv = () => ({ CLOUD_PILOT_KEY_DIR: path.join(tmpDir('cloudpilot-keys-'), 'keys'), CLOUD_PILOT_NUDGE: '0' });
 const idArgs = ['--repo', REPO, '--pr', String(PR), '--id', ID];
 
 test('main is an async function taking argv and returning a number', async () => {

@@ -82,8 +82,9 @@ export function writeJson(file, value, { backup = false } = {}) {
       return;
     } catch (err) {
       // Windows: a reader holding the file makes rename fail for a moment.
+      // A virus scanner or indexer can hold it for seconds: back off up to about 4 s in all before giving up.
       if (i >= 20) { rmSync(tmp, { force: true }); throw err; }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(25 * (i + 1), 300));
     }
   }
 }

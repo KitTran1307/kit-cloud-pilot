@@ -26,6 +26,7 @@ import {
 } from './cloud/channel.mjs';
 import { loadLocalPrivateKey, localPublicKeyPem } from './keys.mjs';
 import { resolveExe, safeCwd } from '../hub/lib/exe.mjs';
+import { nudge as defaultNudge } from './nudge.mjs';
 
 const FLAGS = ['repo', 'pr', 'id', 'answer', 'valid-hours', 'question-sha256', 'ask-authors'];
 
@@ -36,6 +37,8 @@ export const ANSWER_HELP = [
   '  --valid-hours      how long the answer stays valid (above 0, at most 168; default 24)',
   '  --ask-authors      who may have asked (default: the PR author; env CLOUD_PILOT_ASK_AUTHORS)',
   '  --dry-run          show what would be signed and posted, post nothing (needs no private key)',
+  '  After posting, the cloud session that asked (found among the tracked sessions) is told to read the answer now with',
+  '  claude -p "<notice>" --cloud <session_id>; the result is in the output\'s "nudge" field. Off: CLOUD_PILOT_NUDGE=0.',
   '  Never answer a question about money, production deploys, deleting data or legal statements: that needs your own message in the cloud session.',
 ].join('\n');
 
@@ -191,14 +194,19 @@ function ghAccount() {
 // The command line (argv without the verb). deps: env, out, errOut, api, now, account (the gh login shown on stderr), loadKey.
 export async function runAnswer(argv, {
   env = process.env, out = (line) => console.log(line), errOut = (line) => console.error(line), api = ghApi, now = Date.now,
-  account = ghAccount, loadKey = () => loadLocalPrivateKey(env),
+  account = ghAccount, loadKey = () => loadLocalPrivateKey(env), nudge = defaultNudge,
 } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { out(ANSWER_HELP); return 0; }
   try {
     const opts = parseArgs(argv, env);
     errOut(`gh account in use: ${account()} (repo owner: ${opts.repo.split('/')[0]})`);
     const privateKey = opts.dryRun ? undefined : loadKey();
-    out(JSON.stringify(await answer(opts, { api, privateKey, now })));
+    const result = await answer(opts, { api, privateKey, now });
+    // A posted answer is only read when the cloud session looks: tell it (best effort, never fails the answer).
+    if (result.status === 'posted') {
+      try { result.nudge = await nudge({ repo: opts.repo, pr: opts.pr, id: opts.id }, { env, api }); } catch (err) { result.nudge = { sent: false, reason: String(err?.message ?? err).slice(0, 200) }; }
+    }
+    out(JSON.stringify(result));
     return 0;
   } catch (err) {
     out(JSON.stringify({ status: 'error', message: err.message }));

@@ -34,7 +34,10 @@ export function route(track, waiters, isAlive) {
   if (alive) return { to: owner.sessionId, newOwner: alive.pid !== owner.pid ? alive : null, orphaned: false };
   const heir = pickHeir(track, waiters, isAlive);
   if (heir) {
-    return { to: heir.sessionId, newOwner: { sessionId: heir.sessionId, pid: heir.pid, account: heir.account, repoRoot: heir.repoRoot }, orphaned: false };
+    // configDir: which Claude config the heir runs as (`answer` messages the cloud session as that account); an heir
+    // from before 1.6.0 has none, so the old owner's is kept when the account is the same.
+    const configDir = heir.configDir || (heir.account === owner.account ? owner.configDir : undefined);
+    return { to: heir.sessionId, newOwner: { sessionId: heir.sessionId, pid: heir.pid, account: heir.account, repoRoot: heir.repoRoot, ...(configDir ? { configDir } : {}) }, orphaned: false };
   }
   return { to: owner.sessionId || 'unowned', newOwner: null, orphaned: true };
 }

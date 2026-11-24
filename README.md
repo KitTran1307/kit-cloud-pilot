@@ -66,7 +66,7 @@ cloud-pilot wait                                         # in the background: re
 | `status [--json]`, `untrack --id`, `stop`, `doctor` | What is tracked; stop tracking; stop the hub; check the machine |
 | `channel setup <repo> --write`, `channel keygen` | Let a repo's cloud sessions ask you questions ([channel/README.md](channel/README.md)) |
 | `questions --repo --pr [--all]` | List a PR's open questions with the `question_sha256` that `answer` needs |
-| `answer --repo --pr --id --question-sha256 --answer` | Answer a question with a signed comment |
+| `answer --repo --pr --id --question-sha256 --answer` | Answer a question with a signed comment, then tell the session that asked to read it |
 
 In a session, `/pilot` shows what is tracked, `/pilot doctor` checks the machine.
 
@@ -84,6 +84,7 @@ Environment variables (for example in the `env` block of `~/.claude/settings.jso
 | `CLOUD_PILOT_KEY_DIR`, `CLOUD_PILOT_PRIVATE_KEY` | Where the question channel's signing key lives (default `~/.cloud-pilot/keys`), or an existing key file |
 | `CLOUD_PILOT_ASK_PUBLIC_KEY`, `CLOUD_PILOT_ASK_KEY_FINGERPRINT` | Public key (and pin) the hub uses to tell answered questions from open ones |
 | `CLOUD_PILOT_CLAUDE_BIN` | The `claude` executable, when it is not on `PATH` |
+| `CLOUD_PILOT_NUDGE=0` | `answer` does not tell the cloud session that asked to read its answer (`claude -p … --cloud <session>`) |
 | `CLOUD_PILOT_PERMISSION_MODE` | Permission mode `start` gives new cloud sessions: `auto`, `acceptEdits` or `plan` (`--permission-mode` overrides it). Cloud sessions have no bypass mode |
 | `CLOUD_PILOT_MODEL`, `CLOUD_PILOT_EFFORT` | Lead model and effort `start` gives new cloud sessions (`--model`, `--effort` override them); unset, the account's default model |
 | `CLOUD_PILOT_DENY_MODELS` | Comma list of words a cloud session's model must not contain (`opus,fable`); with it set, `start` requires a model |
