@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.1
+
+- **Answers reach sessions started anywhere.** A cloud session that cloud-pilot did not start (the desktop app, the
+  web, a plain `claude --cloud`) is now found through the session link Claude Code puts at the end of its pull
+  request, and told to read its answer as the current account. One account or several, with or without
+  `CLAUDE_CONFIG_DIR`, Remote Control on or off: the notice goes the same way.
+- **Watching with a `Monitor` tool:** the skill runs `wait --max-min 25` under it, so the wait ends before the watch
+  expires (about 30 minutes) and is started again, instead of going quiet.
+
 ## 1.6.0
 
 - **Answers reach a cloud session that stopped looking.** A cloud session that asked a question and then ended its

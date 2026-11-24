@@ -27,6 +27,14 @@ export function findSession(tracked, { repo, pr, headRef = null }) {
   return t ? { sessionId: sessionIdOf(t.url), url: t.url, trackId: t.id, configDir: t.owner?.configDir || null, account: t.owner?.account || null } : null;
 }
 
+// The last claude.ai session link in a PR body (Claude Code writes it at the end), or null. Only the id is used, and
+// `claude --cloud` reaches only sessions of the account it runs as, so a link to anything else just fails to send.
+export function sessionFromBody(body) {
+  const ids = [...String(body ?? '').matchAll(/https:\/\/claude\.ai\/code\/(session_[A-Za-z0-9]{8,64})\b/g)].map((m) => m[1]);
+  const sessionId = ids.at(-1);
+  return sessionId ? { sessionId, url: `https://claude.ai/code/${sessionId}`, trackId: null, configDir: null, account: null, from: 'pr-body' } : null;
+}
+
 // repo and id are checked by the answer's own argument rules ([\w.-]/[\w.-] and [a-z0-9-]), so they are plain text here.
 export function nudgeText({ repo, pr, id }) {
   return [
@@ -59,6 +67,9 @@ export async function nudge({ repo, pr, id }, {
       const data = await api(`repos/${repo}/pulls/${pr}`);
       const headRef = typeof data?.head?.ref === 'string' ? data.head.ref : null;
       if (headRef) found = findSession(list, { repo, pr, headRef });
+      // A session started elsewhere (the desktop app, the web, a plain `claude --cloud`) is not tracked with its link,
+      // but Claude Code ends the PRs it opens with that link: take it from the PR body, as the current account.
+      if (!found) found = sessionFromBody(data?.body);
     } catch { /* the PR could not be read: no session to tell */ }
   }
   const notice = nudgeText({ repo, pr, id });
@@ -68,7 +79,7 @@ export async function nudge({ repo, pr, id }, {
   // The session belongs to the account that started it: run claude as that account when the track recorded it.
   const childEnv = { ...env, ...(found.configDir ? { CLAUDE_CONFIG_DIR: found.configDir } : {}) };
   const r = run(exe.prefix, ['-p', notice, '--cloud', found.sessionId], childEnv);
-  if (r.status === 0) return { sent: true, session_url: found.url };
+  if (r.status === 0) return { sent: true, session_url: found.url, ...(found.from ? { found_in: found.from } : {}) };
   const tail = String(r.error || r.out || '').replace(/\s+/g, ' ').trim().slice(-200);
   return { sent: false, session_url: found.url, notice, reason: `claude --cloud exited ${r.status ?? 'without a status'}${tail ? `: ${tail}` : ''}` };
 }

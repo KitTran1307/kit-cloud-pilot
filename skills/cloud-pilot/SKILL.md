@@ -61,7 +61,9 @@ session that skips permission prompts: do not rely on them for cloud sessions.
 With kit-cloud 2.5 or later (its `wakeSession` option on) and cloud-pilot 1.4 or later, events of the sessions you
 started arrive by themselves, as a message from the kit-cloud plugin holding the same JSON as below: handle them as
 below. Until such a message has reached this session, run `cloud-pilot wait` in the background (your shell tool's
-background mode). It prints one JSON line when something
+background mode). Where there is no background mode but a `Monitor` tool, run `cloud-pilot wait --max-min 25` under
+it: a Monitor watch expires after about 30 minutes, so the wait ends first with `timeout` and you start it again;
+never leave a watch that expires silently. It prints one JSON line when something
 needs this session, then ends: start it again right after handling each batch (a `stalled` one too), or later events
 such as `merged` stay unread in the queue.
 - `{"status":"events","events":[...]}`. Kinds: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `question`,
