@@ -2,7 +2,7 @@
 // AUTOFIX_MAX per event kind and commit. The text is built here from four re-validated plain fields; nothing that came
 // from GitHub text (titles, check names, branch descriptions) ever reaches it.
 import { setting } from './config.mjs';
-import { sendToSessionAsync, sessionOfTrack } from './send.mjs';
+import { sendToSessionAsync, sessionOfTrack, alternatesOf } from './send.mjs';
 import { resolveClaude } from '../../start/lib.mjs';
 
 export const AUTOFIX_MAX = 2;
@@ -32,7 +32,7 @@ export function autofixNotice(ev) {
 }
 
 // Decides now and returns { sent, reason }; the send itself runs in the background and its outcome goes to `log`.
-export function startAutofix(track, ev, pr, { env = process.env, send = sendToSessionAsync, claude, log = () => {}, nowMs = Date.now() } = {}) {
+export function startAutofix(track, ev, pr, { env = process.env, send = sendToSessionAsync, claude, log = () => {}, nowMs = Date.now(), tracked = [] } = {}) {
   try {
     const text = autofixNotice(ev);
     if (!text) return { sent: false, reason: 'not an autofix event' };
@@ -57,7 +57,7 @@ export function startAutofix(track, ev, pr, { env = process.env, send = sendToSe
     memo.autofixTotal = (memo.autofixTotal ?? 0) + 1;
     memo.autofixLastMs = nowMs;
     const what = `autofix ${ev.kind} ${ev.repo}#${ev.pr}`;
-    new Promise((resolve) => resolve(send(text, found, { env, claude: exe })))
+    new Promise((resolve) => resolve(send(text, found, { env, claude: exe, alternates: alternatesOf(tracked, found) })))
       .then((r) => log(`${what}: ${r?.sent ? 'sent' : `not sent: ${r?.reason ?? 'unknown'}`}`))
       .catch((err) => log(`${what}: not sent: ${String(err?.message ?? err).slice(0, 200)}`));
     return { sent: true, reason: 'notice dispatched; the result is in hub.log' };

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.0
+
+- **A question from a cloud session always reaches someone.** A question on a branch that a repository watch found
+  (a session started from the desktop app or the web) now wakes the session watching that repository, like the
+  sessions it started itself. Before, such a question could wait unread for a day.
+- **Unanswered questions are told again.** `question_waiting` (urgent) comes 20 minutes after a question was first
+  seen and then every hour, at most 8 times, until it has an answer; the person also gets a desktop notification each
+  time (and a phone alert when alerts are on).
+- **A session that stopped listening counts as gone.** A local session whose process still runs but that has left an
+  urgent event unread for 15 minutes hands its tracks to another waiting session, or the person is told.
+- **A question is never held back by the toast limit**: a notification shown for a conflict a minute earlier no
+  longer hides the question that follows it.
+- **Messages to sessions of the desktop app's account work.** A track of the account `default` sends with no
+  `CLAUDE_CONFIG_DIR` instead of the hub's own; when an account answers "Session not found" or its login has
+  expired, the other known accounts are tried, and a failed send says what to do (sign in again, or open the session).
+
 ## 1.7.0
 
 - **Alerts on your phone, off by default.** Set `CLOUD_PILOT_NOTIFY_CMD` (a command of your own) or

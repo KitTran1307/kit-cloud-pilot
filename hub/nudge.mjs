@@ -2,7 +2,7 @@
 // Prints exactly one JSON line: { sent, session_url?, reason? }. Exit 0 even when nothing was sent (the reason says why);
 // exit 1 only for bad arguments. The text is the default below or the person's own --text, never text from GitHub.
 import { paths, hubDir, readJson } from './lib/store.mjs';
-import { locateSession, sessionOfTrack, sendToSession } from './lib/send.mjs';
+import { locateSession, sessionOfTrack, sendToSession, alternatesOf } from './lib/send.mjs';
 
 export const DEFAULT_TEXT = 'Status check from your local session: if your task is not finished, continue it; push work in progress; if you are blocked, ask on the PR.';
 const MAX_TEXT = 2000;
@@ -66,7 +66,7 @@ export async function runNudge(argv, deps = {}) {
     out(JSON.stringify({ sent: false, reason: 'no session link for it (the track has no session url and its PR does not name one)' }));
     return 0;
   }
-  const r = sendToSession(a.text, found, { env, claude, ...(run ? { run } : {}) });
+  const r = sendToSession(a.text, found, { env, claude, alternates: alternatesOf(list, found), ...(run ? { run } : {}) });
   out(JSON.stringify({ sent: r.sent, session_url: r.session_url, ...(r.sent ? {} : { reason: r.reason }) }));
   return 0;
 }

@@ -15,13 +15,17 @@ const skip = process.platform !== 'win32'
     ? 'ConPTY is unavailable here (Windows older than 10 1809, or PowerShell cannot compile its helper)'
     : false;
 
-// Runs argv through the ConPTY helper; resolves { out, info } once the helper ends, stopping it after `stopAfterMs`.
-function runPty(argv, { stopAfterMs = null } = {}) {
+// Runs argv through the ConPTY helper; resolves { out, info, stoppedMs } once the helper ends. With `stopWhen` it is
+// stopped as soon as its output matches (at the latest after `stopCapMs`); stoppedMs is when the stop was asked. A
+// fixed delay was flaky on a busy machine: node had not printed yet when the stop came (1 of 5 runs, 2026-11-26).
+function runPty(argv, { stopWhen = null, stopCapMs = 30000 } = {}) {
   const h = startPty({ helper: conptyHelper(), argv, cwd: tmp('cwd'), env: cleanEnv(), rows: 40, cols: 120 });
   let out = '';
-  h.onData((t) => { out += t; });
-  if (stopAfterMs !== null) setTimeout(() => { void h.stop(); }, stopAfterMs);
-  return new Promise((resolve) => h.onClose((info) => resolve({ out, info })));
+  let stoppedMs = null;
+  const stop = () => { if (stoppedMs === null) { stoppedMs = Date.now(); void h.stop(); } };
+  h.onData((t) => { out += t; if (stopWhen && stopWhen.test(out)) stop(); });
+  const cap = stopWhen ? setTimeout(stop, stopCapMs) : null;
+  return new Promise((resolve) => h.onClose((info) => { if (cap) clearTimeout(cap); resolve({ out, info, stoppedMs }); }));
 }
 
 describe('conpty.ps1', { skip }, () => {
@@ -34,11 +38,10 @@ describe('conpty.ps1', { skip }, () => {
   });
 
   test('closing stdin stops a command that keeps running', async () => {
-    const started = Date.now();
-    const { out, info } = await runPty([process.execPath, '-e', "console.log('running'); setInterval(() => {}, 1000)"], { stopAfterMs: 2500 });
+    const { out, info, stoppedMs } = await runPty([process.execPath, '-e', "console.log('running'); setInterval(() => {}, 1000)"], { stopWhen: /running/ });
     assert.equal(info.code, 0);
     assert.match(out, /running/);
-    assert.ok(Date.now() - started < 15000, 'stopped promptly');
+    assert.ok(stoppedMs !== null && Date.now() - stoppedMs < 15000, 'stopped promptly');
     assert.doesNotMatch(info.stderr, /child exited/);
   });
 

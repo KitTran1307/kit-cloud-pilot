@@ -35,7 +35,9 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
 - Branch session events: `pr-opened`, `merged`, `closed`, `gone`, `ci-failed`, `conflict` (urgent, once per head commit: the open PR of a tracked branch has merge conflicts with its
   base, GitHub's `mergeable_state` `dirty`, read with one cached PR call per open tracked PR; fields `pr`, `pr_url`, `head`,
   `base_ref` when it is a plain branch name), `question`, `question_unanswerable`
-  (an ask edited after it was reported), `question_stale` (see below), `no-push` (urgent, once: a track registered
+  (an ask edited after it was reported), `question_stale` (see below), `question_waiting` (urgent: a question still has no
+  answer 20 min after the hub first saw it, then every hour, at most 8 times; fields `pr`, `pr_url`, `waiting_min`,
+  `reminder`; the person also gets a desktop notification each time), `no-push` (urgent, once: a track registered
   with its session link saw no branch, commit or PR 20 min after it was made, or `CLOUD_PILOT_NO_PUSH_MIN`; see
   "Accounts set aside" below), `stalled` (1 h quiet),
   `abandoned` (4 h quiet with no PR; 72 h with a PR waiting), `error` (3 failed rounds in a row, reported once).
@@ -81,10 +83,18 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
   holds something): it prints `{"status":"events",...}`, `{"status":"settling","retry_sec":n}` or
   `{"status":"empty"}`, and only takes the events of tracks the session registered. Events of branches a watch found
   by itself stay queued for `hub-wait.sh` (unless the session tracked that branch by hand), so a watch never wakes a
-  session about a branch nobody there asked for. Tracks a session took over (`handed_over`) count as its own.
+  session about a branch nobody there asked for. Questions are the exception: a question on any branch the session's
+  watch found is taken too, since a cloud session that asks waits on someone. Tracks a session took over
+  (`handed_over`) count as its own.
 - Routing: the session that registered a track gets its events while it lives; when it is gone, another live session
   waiting on the same repo and account takes the track over; with nobody left, events are kept and a desktop
-  notification is shown for urgent ones, at most once an hour per track.
+  notification is shown for urgent ones, at most once an hour per track (a question is always shown). A session whose
+  process still runs but that has left an urgent event unread for 15 min (no waiter and no kit-cloud, a `claude -p`, a
+  reused process id) counts as gone the same way.
+- Sends (`answer`'s notice, auto-handling, `nudge`) run `claude --cloud` as the account that started the session:
+  its recorded config folder, or for the account `default` no `CLAUDE_CONFIG_DIR` at all (the desktop app's own
+  sign-in). When that account answers "Session not found" or its login has expired, the other accounts the tracks
+  recorded are tried (at most 4); the reason of a failed send says what to do (sign in again, or open the session).
 
 ## Accounts set aside
 
@@ -106,7 +116,7 @@ this session's account when it is one of them.
 | `CLOUD_PILOT_NOTIFY=0` | No desktop notifications for tracks registered with it set (`CLOUD_PILOT_NO_TOAST=1` also works). |
 | `CLOUD_PILOT_DELETE_MERGED=1` | Tracks registered with it set delete their `claude/*` branch after the PR merges, only while the branch still points at the merged commit. Never for branches found by `watch`. Off by default. |
 | `CLOUD_PILOT_NOTIFY_CMD` | A command of your own, run once per alert event with `CLOUD_PILOT_EVENT_KIND`, `_REPO`, `_BRANCH`, `_PR`, `_URL` (session link, else PR link) and `_URGENT` (1/0) in its environment, never a PR title or other GitHub text. Not waited for, killed after 15 s, failures logged. Read from the environment only, never from a repository. Off by default. |
-| `CLOUD_PILOT_NOTIFY_KINDS` | Event kinds that alert (default `question,question_stale,ci-failed,conflict,no-push,merged,abandoned`). |
+| `CLOUD_PILOT_NOTIFY_KINDS` | Event kinds that alert (default `question,question_stale,question_waiting,ci-failed,conflict,no-push,merged,abandoned`). |
 | `CLOUD_PILOT_NTFY_TOPIC`, `CLOUD_PILOT_NTFY_URL` | Built-in ntfy: POSTs a line like `ci-failed · owner/repo#7` to the topic (letters, digits, `-`, `_`, up to 64) on the server (default `https://ntfy.sh`; `http` or `https`), with a `Click` header holding the link (left out if it has non-ASCII characters). On the public ntfy.sh anyone who knows the topic can read it: use a long random topic or your own server. No token is used. `CLOUD_PILOT_NOTIFY=0` does not affect these. |
 | `CLOUD_PILOT_AUTOFIX=0` | No notice to a session about its failed CI or conflict. |
 | `CLOUD_PILOT_NO_PUSH_MIN` | Minutes a started session may go without a push before `no-push` (5 to 120, default 20). Shorter suits briefs whose first step is to push the branch. |

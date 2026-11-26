@@ -106,7 +106,7 @@ Environment variables (for example in the `env` block of `~/.claude/settings.jso
 | `CLOUD_PILOT_LOCAL_ONLY` | Comma list of accounts that never start cloud sessions (`default` = `~/.claude`, `work` = `~/.claude-work`) |
 | `CLOUD_PILOT_NOTIFY=0` | No desktop notifications (does not affect the alerts below) |
 | `CLOUD_PILOT_NOTIFY_CMD` | A command of your own the hub runs for each alert event (see above); not waited for, stopped after 15 s, failures only go to `hub.log` |
-| `CLOUD_PILOT_NOTIFY_KINDS` | Event kinds that alert (default `question,question_stale,ci-failed,conflict,no-push,merged,abandoned`) |
+| `CLOUD_PILOT_NOTIFY_KINDS` | Event kinds that alert (default `question,question_stale,question_waiting,ci-failed,conflict,no-push,merged,abandoned`) |
 | `CLOUD_PILOT_NTFY_TOPIC`, `CLOUD_PILOT_NTFY_URL` | Send alerts to an ntfy topic (letters, digits, `-`, `_`, up to 64); server default `https://ntfy.sh` (`http` or `https`) |
 | `CLOUD_PILOT_AUTOFIX=0` | The hub does not tell a session to fix its own failed CI or merge conflict |
 | `CLOUD_PILOT_DELETE_MERGED=1` | Delete a tracked `claude/*` branch after its PR merges (only while it still points at the merged commit; never branches found by `watch`) |

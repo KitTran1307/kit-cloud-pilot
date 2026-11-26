@@ -27,10 +27,11 @@ export function pickHeir(track, waiters, isAlive) {
   return pool.sort((a, b) => (b.since ?? 0) - (a.since ?? 0))[0] ?? null;
 }
 
-// -> { to: sessionId, newOwner: owner | null, orphaned: boolean }
-export function route(track, waiters, isAlive) {
+// -> { to: sessionId, newOwner: owner | null, orphaned: boolean }. deaf: the owner runs but leaves its news unread
+// (hub.mjs ownerDeaf), so it counts as gone: an heir takes the track, else the person is told.
+export function route(track, waiters, isAlive, { deaf = false } = {}) {
   const owner = track.owner ?? {};
-  const alive = ownerAlive(track, waiters, isAlive);
+  const alive = deaf ? null : ownerAlive(track, waiters, isAlive);
   if (alive) return { to: owner.sessionId, newOwner: alive.pid !== owner.pid ? alive : null, orphaned: false };
   const heir = pickHeir(track, waiters, isAlive);
   if (heir) {

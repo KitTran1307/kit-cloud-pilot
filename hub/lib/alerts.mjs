@@ -5,7 +5,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { setting } from './config.mjs';
 import { safeCwd } from './exe.mjs';
 
-const DEFAULT_KINDS = 'question,question_stale,ci-failed,conflict,no-push,merged,abandoned';
+const DEFAULT_KINDS = 'question,question_stale,question_waiting,ci-failed,conflict,no-push,merged,abandoned';
 const TOKEN = /^[a-z_-]{1,40}$/;
 // A plain https link: no spaces, no control characters, no bidi characters that could disguise where it goes.
 // No shell metacharacters either (& | ^ " < > $ ` and %): the person's command runs in a shell (cmd.exe expands %VAR%).

@@ -33,7 +33,7 @@ function fakeFetch(res = { ok: true, status: 200 }) {
 }
 
 test('alertKinds: default list, custom list, bad tokens dropped', () => {
-  assert.deepEqual([...alertKinds({})], ['question', 'question_stale', 'ci-failed', 'conflict', 'no-push', 'merged', 'abandoned']);
+  assert.deepEqual([...alertKinds({})], ['question', 'question_stale', 'question_waiting', 'ci-failed', 'conflict', 'no-push', 'merged', 'abandoned']);
   assert.deepEqual([...alertKinds({ CLOUD_PILOT_NOTIFY_KINDS: ' Merged , ci-failed ' })], ['merged', 'ci-failed']);
   assert.deepEqual([...alertKinds({ CLOUD_PILOT_NOTIFY_KINDS: 'merged,bad kind,$(x),,a'.concat(',', 'x'.repeat(41)) })], ['merged', 'a']);
   assert.ok(!alertKinds({}).has('pr-opened'));

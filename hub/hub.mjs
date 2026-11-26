@@ -22,7 +22,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { paths, readJson, writeJson, listJson, remove, log, withLock, isAlive } from './lib/store.mjs';
 import { makeApi, makeTokenFor } from './lib/gh.mjs';
 import { snapshot } from './lib/poll.mjs';
-import { trackEvents, trackTitle } from './lib/events.mjs';
+import { trackEvents, trackTitle, askReminder, ASK_KINDS } from './lib/events.mjs';
 import { route, ownerAlive } from './lib/route.mjs';
 import { toast } from './lib/notify.mjs';
 import { alertEvents } from './lib/alerts.mjs';
@@ -229,13 +229,14 @@ export function enqueue(p, sessionId, events) {
   writeJson(file, kept);
 }
 
-// Call inside withLock: an heir takes over what was queued for the dead owner.
-export function moveQueue(p, fromSession, toSession) {
+// Call inside withLock: an heir takes over what was queued for the dead (or deaf) owner. With nowMs the events count
+// as arrived now: the heir is not judged deaf for what its predecessor left unread (ownerDeaf reads `at`).
+export function moveQueue(p, fromSession, toSession, nowMs) {
   if (!fromSession || fromSession === toSession) return 0;
   const from = queueFile(p, fromSession);
   const old = readJson(from, [], { cache: true });
   if (!old.length) return 0;
-  enqueue(p, toSession, old.map((e) => ({ ...e, handed_over: true })));
+  enqueue(p, toSession, old.map((e) => ({ ...e, handed_over: true, ...(Number.isFinite(nowMs) ? { at: nowMs } : {}) })));
   writeJson(from, []);
   return old.length;
 }
@@ -256,19 +257,22 @@ export function peekQueue(p, sessionId, { nowMs = Date.now(), settleMs = 60_000 
 
 // For a plugin that hands the events to its own session (kit-cloud): what peekQueue would report, but only for tracks
 // this session registered itself. Events of branches a repo watch found on its own stay queued for a waiter that asks
-// for them (hub-wait), so a session is never woken about cloud work it did not start.
+// for them (hub-wait), so a session is never woken about cloud work it did not start. Questions are the exception: a
+// cloud session that asks waits on someone, so the session watching its repository hears it, started there or not
+// (2026-11-26: a question on a branch a watch found sat unread for 28 hours).
 export function takeOwn(p, sessionId, { nowMs = Date.now(), settleMs = 60_000 } = {}) {
   return withLock(p, () => {
     const file = queueFile(p, sessionId);
     const q = readJson(file, [], { cache: true });
     if (!q.length) return null;
     const found = new Set(readJson(p.tracked, []).filter((t) => t.discoveredBy && !t.claimed).map((t) => t.id));
-    const own = q.filter((e) => !found.has(e.trackId));
+    const kept = (e) => found.has(e.trackId) && !ASK_KINDS.has(e.kind);
+    const own = q.filter((e) => !kept(e));
     if (!own.length) return null;
     const oldest = Math.min(...own.map((e) => e.at ?? nowMs));
     const left = settleMs - (nowMs - oldest);
     if (!own.some((e) => e.urgent) && left > 0) return { settleMs: left };
-    writeJson(file, q.filter((e) => found.has(e.trackId)));
+    writeJson(file, q.filter(kept));
     return { events: own };
   });
 }
@@ -415,32 +419,57 @@ export function writeState(p, extra = {}, nowMs = Date.now(), aliveFn = isAlive)
 
 export const ERROR_STREAK = 3; // consecutive failed polls of a repo before its owners get an "error" event
 export const ERROR_GIVE_UP_MS = 24 * 3600_000; // continuous errors this long end the track
-export const TOAST_EVERY_MS = 3600_000; // at most one toast per track per hour
+export const TOAST_EVERY_MS = 3600_000; // at most one toast per track per hour (questions excepted)
+// An owner whose process runs but that has left an urgent event unread this long is not listening (a session with no
+// waiter and no kit-cloud, a non-interactive claude -p, a reused pid): its events go to an heir or the person instead.
+export const DEAF_MS = 15 * 60_000;
+
+// Call inside withLock: whether the owner of a track has left an urgent event in its queue for DEAF_MS. Events of
+// branches a watch found by itself are left there on purpose (for hub-wait) and do not count, questions excepted.
+export function ownerDeaf(p, t, nowMs = Date.now()) {
+  const sid = t.owner?.sessionId;
+  if (!sid) return false;
+  const q = readJson(queueFile(p, sid), [], { cache: true });
+  if (!q.length) return false;
+  const found = new Set(readJson(p.tracked, [], { cache: true }).filter((x) => x.discoveredBy && !x.claimed).map((x) => x.id));
+  const ats = q.filter((e) => e.urgent && (ASK_KINDS.has(e.kind) || !found.has(e.trackId))).map((e) => e.at).filter(Number.isFinite);
+  return ats.length > 0 && nowMs - Math.min(...ats) >= DEAF_MS;
+}
 export const PARK_REPO_AFTER_MS = 12 * 3600_000; // a repo track with nobody alive this long stops (no endless polling)
 
 // Call inside withLock: deliver a track's events (owner, heir, or orphaned + a rate-limited toast).
 function deliver(p, t, events, waiters, { nowMs, aliveFn, notify, alert, env }) {
-  const dest = route(t, waiters, aliveFn);
+  const deaf = ownerDeaf(p, t, nowMs);
+  const dest = route(t, waiters, aliveFn, { deaf });
   const handed = dest.newOwner && dest.newOwner.sessionId !== t.owner?.sessionId;
   if (handed) {
     log(p, `track ${t.id} handed from ${t.owner?.sessionId} to ${dest.newOwner.sessionId}`);
-    moveQueue(p, t.owner?.sessionId, dest.newOwner.sessionId);
+    moveQueue(p, t.owner?.sessionId, dest.newOwner.sessionId, nowMs);
   }
   if (dest.newOwner) t.owner = dest.newOwner;
   enqueue(p, dest.to, events.map((e) => ({ ...e, at: nowMs, account: t.owner?.account, ...(handed ? { handed_over: true } : {}) })));
   log(p, `events ${t.id} -> ${dest.to}: ${events.map((e) => e.kind).join(',')}`);
   // Phone / command alerts (opt-in, see alerts.mjs): started now, never waited for, never fail the delivery.
   try { alert(events, { env, log: (line) => log(p, line) }); } catch (err) { log(p, `alert failed: ${String(err?.message ?? err).slice(0, 200)}`); }
+  // A question is never held back by the hourly limit: one toast for a conflict must not hide the question after it.
+  const ask = events.find((e) => ASK_KINDS.has(e.kind));
   if (dest.orphaned) {
     t.orphanedSinceMs ??= nowMs;
     const urgent = events.some((e) => e.urgent);
-    if (urgent && t.notify !== false && nowMs - (t.lastToastMs ?? 0) >= TOAST_EVERY_MS) {
+    if (urgent && t.notify !== false && (ask || nowMs - (t.lastToastMs ?? 0) >= TOAST_EVERY_MS)) {
       t.lastToastMs = nowMs;
-      const first = events.find((e) => e.urgent) ?? events[0];
-      notify('cloud-pilot', `${t.repo} ${t.branch || ''}: ${first.kind}${events.length > 1 ? ` (+${events.length - 1})` : ''} - its local session has ended; open Claude to handle it`);
+      const first = ask ?? events.find((e) => e.urgent) ?? events[0];
+      const why = deaf ? 'its local session is not reading cloud news' : 'its local session has ended';
+      notify('cloud-pilot', `${t.repo} ${t.branch || ''}: ${toastWhat(first)}${events.length > 1 ? ` (+${events.length - 1})` : ''} - ${why}; open Claude to handle it`);
     }
-  } else delete t.orphanedSinceMs;
+  } else {
+    delete t.orphanedSinceMs;
+    // A live session got the reminder too; the person, who may be away from it, gets a toast as well.
+    if (ask?.kind === 'question_waiting' && t.notify !== false) notify('cloud-pilot', `${t.repo} ${t.branch || ''}: ${toastWhat(ask)}`);
+  }
 }
+
+const toastWhat = (e) => (e.kind === 'question_waiting' ? `a question has waited ${e.waiting_min} min for an answer${e.pr ? ` (PR #${e.pr})` : ''}` : e.kind);
 
 // One poll of every repo with active tracks. Injected for tests: api, publicKey, nowMs, notify, aliveFn, cleanup, env,
 // alert (phone alerts), autofix (tell the session to fix its failed CI or conflict).
@@ -510,6 +539,9 @@ export function pollOnce(p, {
         }
         t.memo = { ...r.memo, errStreak: 0, errSinceMs: null };
         t.view = r.view;
+        // A question still unanswered is told again, to the session and the person, until it is answered.
+        const remind = r.active ? askReminder(t, nowMs) : null;
+        if (remind) r.events.push(remind);
         t.lastPolledMs = nowMs;
         if (!r.active) { t.active = false; t.endedMs = nowMs; }
         if (r.events.length) {
@@ -518,7 +550,7 @@ export function pollOnce(p, {
           if (t.kind === 'branch') {
             for (const e of r.events) {
               if (e.kind !== 'ci-failed' && e.kind !== 'conflict') continue;
-              try { e.autofix = autofix(t, e, now.prs?.[t.branch], { env, nowMs, log: (line) => log(p, line) }); } catch (err) {
+              try { e.autofix = autofix(t, e, now.prs?.[t.branch], { env, nowMs, log: (line) => log(p, line), tracked: list }); } catch (err) {
                 log(p, `autofix ${t.id} failed: ${String(err?.message ?? err).slice(0, 200)}`);
                 e.autofix = { sent: false, reason: 'autofix failed (see hub.log)' };
               }

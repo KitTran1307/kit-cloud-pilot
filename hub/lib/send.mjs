@@ -64,15 +64,57 @@ export function sendCommand(text, found, { env = process.env, claude } = {}) {
   let msg = String(text ?? '').replace(/\u0000/g, '').trim().slice(0, MAX_TEXT);
   if (!msg) return { error: 'nothing to send: the message is empty' };
   if (msg.startsWith('-')) msg = `Message: ${msg}`;
-  // The session belongs to the account that started it: run claude as that account when the track recorded it.
-  const childEnv = { ...env, ...(found.configDir ? { CLAUDE_CONFIG_DIR: found.configDir } : {}) };
+  // The session belongs to the account that started it: run claude as that account when the track recorded it. The
+  // account "default" is the one Claude Code uses with no CLAUDE_CONFIG_DIR (the desktop app's own sign-in, a plain
+  // claude): the variable is removed, not inherited from whichever session started the hub (2026-11-25: a conflict
+  // notice for a desktop app session went out as another account and got "Session not found").
+  const childEnv = { ...env };
+  if (found.configDir) childEnv.CLAUDE_CONFIG_DIR = found.configDir;
+  else if (found.account === 'default') delete childEnv.CLAUDE_CONFIG_DIR;
   return { prefix: exe.prefix, args: ['-p', msg, '--cloud', found.sessionId], env: childEnv };
+}
+
+const NOT_FOUND = /session not found|not_found_error/i;
+const LOGIN = /failed to authenticate|reached its time limit|claude auth login|not logged in|please run \/login|invalid api key|oauth token has expired/i;
+
+// Which account a send ran as, for the person: the config folder's account name, or "default".
+const asAccount = (found) => {
+  if (!found.configDir) return found.account || 'the current account';
+  const base = String(found.configDir).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
+  return base.startsWith('.claude-') ? base.slice('.claude-'.length) : base === '.claude' ? 'default' : base;
+};
+
+// What went wrong, said so the person (or Claude) knows the next step. why: 'login' | 'not-found' | 'other'.
+export function failure(found, r) {
+  const tail = String(r.error || r.out || '').replace(/\s+/g, ' ').trim().slice(-200);
+  const why = LOGIN.test(tail) ? 'login' : NOT_FOUND.test(tail) ? 'not-found' : 'other';
+  const hint = why === 'login'
+    ? ` (the Claude login of ${asAccount(found)} has expired: sign in again with claude auth login${found.configDir ? ` and CLAUDE_CONFIG_DIR=${found.configDir}` : ' with no CLAUDE_CONFIG_DIR set'})`
+    : why === 'not-found' ? ` (the session is not one of ${asAccount(found)}'s: it was probably started from another account, for example the desktop app; open its link)` : '';
+  return { why, reason: `claude --cloud exited ${r.status ?? 'without a status'}${tail ? `: ${tail}` : ''}${hint}` };
 }
 
 function result(found, r) {
   if (r.status === 0) return { sent: true, session_url: found.url, ...(found.from ? { found_in: found.from } : {}) };
-  const tail = String(r.error || r.out || '').replace(/\s+/g, ' ').trim().slice(-200);
-  return { sent: false, session_url: found.url, reason: `claude --cloud exited ${r.status ?? 'without a status'}${tail ? `: ${tail}` : ''}` };
+  const f = failure(found, r);
+  return { sent: false, session_url: found.url, reason: f.reason, why: f.why };
+}
+
+// The other accounts a send may try when the first answers "Session not found" or has lost its login: the config
+// folders the tracks recorded, and "default". Each try costs one claude start (about 3 s); a wrong account only fails.
+export const MAX_ALTERNATES = 4;
+// One key per account: the same folder written with \ or /, a trailing slash or other letter case is one account.
+const accountKey = (dir) => (dir ? asAccount({ configDir: dir }).toLowerCase() : 'default');
+export function alternatesOf(tracked, found) {
+  const tried = found.configDir ? accountKey(found.configDir) : found.account === 'default' ? 'default' : null;
+  const byKey = new Map();
+  for (const t of Array.isArray(tracked) ? tracked : []) {
+    const d = t?.owner?.configDir;
+    if (typeof d === 'string' && d && !byKey.has(accountKey(d))) byKey.set(accountKey(d), d);
+  }
+  const out = [...byKey].filter(([k]) => k !== tried && k !== 'default').map(([, d]) => ({ ...found, configDir: d, account: asAccount({ configDir: d }) }));
+  if (tried !== 'default') out.push({ ...found, configDir: null, account: 'default' });
+  return out.slice(0, MAX_ALTERNATES);
 }
 
 function defaultRun(prefix, args, env) {
@@ -100,16 +142,37 @@ function defaultRunAsync(prefix, args, env) {
   });
 }
 
-// deps: env, claude (resolveClaude's result), run (sync: (prefix, args, env) => { status, out, error }).
-export function sendToSession(text, found, { env = process.env, claude, run = defaultRun } = {}) {
-  const cmd = sendCommand(text, found, { env, claude });
-  if (cmd.error) return { sent: false, session_url: found.url, reason: cmd.error };
-  return result(found, run(cmd.prefix, cmd.args, cmd.env));
+// Tries the next account only when the last one could not reach the session at all (not found, or no login).
+const retryable = (r) => !r.sent && (r.why === 'not-found' || r.why === 'login');
+const withTries = (r, reasons) => (r.sent || reasons.length < 2 ? r : { ...r, reason: reasons.join(' | ').slice(-900) });
+
+// deps: env, claude (resolveClaude's result), run (sync: (prefix, args, env) => { status, out, error }),
+// alternates (alternatesOf: other accounts to try when the session is not this account's).
+export function sendToSession(text, found, { env = process.env, claude, run = defaultRun, alternates = [] } = {}) {
+  const reasons = [];
+  let r;
+  for (const f of [found, ...alternates]) {
+    const cmd = sendCommand(text, f, { env, claude });
+    if (cmd.error) return { sent: false, session_url: found.url, reason: cmd.error };
+    r = result(f, run(cmd.prefix, cmd.args, cmd.env));
+    if (r.sent) return { ...r, ...(f !== found ? { as_account: f.account } : {}) };
+    reasons.push(r.reason);
+    if (!retryable(r)) break;
+  }
+  return withTries(r, reasons);
 }
 
 // deps: as above, but run may return a promise (default: a non-blocking child process with its own timeout).
-export async function sendToSessionAsync(text, found, { env = process.env, claude, run = defaultRunAsync } = {}) {
-  const cmd = sendCommand(text, found, { env, claude });
-  if (cmd.error) return { sent: false, session_url: found.url, reason: cmd.error };
-  try { return result(found, await run(cmd.prefix, cmd.args, cmd.env)); } catch (err) { return { sent: false, session_url: found.url, reason: String(err?.message ?? err).slice(0, 200) }; }
+export async function sendToSessionAsync(text, found, { env = process.env, claude, run = defaultRunAsync, alternates = [] } = {}) {
+  const reasons = [];
+  let r;
+  for (const f of [found, ...alternates]) {
+    const cmd = sendCommand(text, f, { env, claude });
+    if (cmd.error) return { sent: false, session_url: found.url, reason: cmd.error };
+    try { r = result(f, await run(cmd.prefix, cmd.args, cmd.env)); } catch (err) { return { sent: false, session_url: found.url, reason: String(err?.message ?? err).slice(0, 200) }; }
+    if (r.sent) return { ...r, ...(f !== found ? { as_account: f.account } : {}) };
+    reasons.push(r.reason);
+    if (!retryable(r)) break;
+  }
+  return withTries(r, reasons);
 }

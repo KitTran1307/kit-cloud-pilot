@@ -17,6 +17,14 @@ export const NO_PUSH_MS = 20 * 60_000;
 // A PR status line that needs the person: English words, or the protocol's original Vietnamese ones.
 const URGENT_TEXT = /WAITING FOR YOU|BLOCKED|CH\u1edc B\u1ea0N|K\u1eb8T/;
 
+// The question events. A question waits on someone, so it is never held back the way other news may be.
+export const ASK_KINDS = new Set(['question', 'question_stale', 'question_unanswerable', 'question_waiting']);
+// A question still unanswered is told again (question_waiting): first after this long, then at this interval, at most
+// this many times. The first question event can be missed (a toast while away, a session that ended); this cannot.
+export const ASK_REMIND_FIRST_MS = 20 * 60_000;
+export const ASK_REMIND_EVERY_MS = 60 * 60_000;
+export const ASK_REMIND_MAX = 8;
+
 // An answer signed for an earlier head of the PR is reported once the current head has stood this long: a session that
 // is still working keeps pushing (it read its answer before), one that waits on an answer it cannot accept does not.
 export const STALE_SETTLE_MS = 5 * 60_000;
@@ -222,6 +230,30 @@ function repoTrack(track, prev, now, nowMs) {
 function repoView(now) {
   const open = Object.values(now.prs).filter((p) => p.state === 'open').length;
   return { state: 'repo', detail: `${open} open claude/* PR${open === 1 ? '' : 's'}`, lastActivityMs: now.at };
+}
+
+// For a branch track whose view (set by this poll) says a question waits: the next reminder when one is due, else null.
+// Keeps its clock in track.memo; a track that stops asking forgets it, so a later question starts over.
+export function askReminder(track, nowMs) {
+  const memo = track.memo && typeof track.memo === 'object' ? track.memo : (track.memo = {});
+  if (track.kind !== 'branch' || track.view?.state !== 'question') {
+    delete memo.askSinceMs; delete memo.askReminded; delete memo.askRemindedMs;
+    return null;
+  }
+  memo.askSinceMs ??= nowMs;
+  const waited = nowMs - memo.askSinceMs;
+  const n = memo.askReminded ?? 0;
+  if (n >= ASK_REMIND_MAX || waited < ASK_REMIND_FIRST_MS) return null;
+  if (Number.isFinite(memo.askRemindedMs) && nowMs - memo.askRemindedMs < ASK_REMIND_EVERY_MS) return null;
+  memo.askReminded = n + 1;
+  memo.askRemindedMs = nowMs;
+  const minutes = Math.round(waited / 60000);
+  return ev(track, 'question_waiting', {
+    ...(Number.isInteger(track.view.pr) ? { pr: track.view.pr } : {}),
+    ...(track.view.prUrl ? { pr_url: track.view.prUrl } : {}),
+    waiting_min: minutes, reminder: n + 1, reminders_max: ASK_REMIND_MAX,
+    note: `A question from this cloud session has had no answer for ${minutes} min; the session is still waiting. If you can answer it, do it now (read it with: cloud-pilot questions --repo ${track.repo}${Number.isInteger(track.view.pr) ? ` --pr ${track.view.pr}` : ''}; then cloud-pilot answer). If it needs the person, tell them again in one line with the PR link.`,
+  }, true);
 }
 
 export function trackEvents(track, prev, now, nowMs) {

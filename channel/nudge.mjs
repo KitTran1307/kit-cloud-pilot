@@ -6,7 +6,7 @@
 // comes back as { sent: false, reason }.
 import { paths, hubDir, readJson } from '../hub/lib/store.mjs';
 import { setting } from '../hub/lib/config.mjs';
-import { NUDGE_TIMEOUT_MS, sessionIdOf, findSession, sessionFromBody, locateSession, sendToSession } from '../hub/lib/send.mjs';
+import { NUDGE_TIMEOUT_MS, sessionIdOf, findSession, sessionFromBody, locateSession, sendToSession, alternatesOf } from '../hub/lib/send.mjs';
 
 // The lookup and the send are shared with the hub (a failed CI or a conflict goes back to its session) and with
 // `cloud-pilot nudge`: see hub/lib/send.mjs.
@@ -34,6 +34,6 @@ export async function nudge({ repo, pr, id }, {
   const found = await locateSession(list, { repo, pr }, api);
   const notice = nudgeText({ repo, pr, id });
   if (!found) return { sent: false, notice, reason: 'no tracked cloud session for this PR (tell it yourself: claude -p "<message>" --cloud <session_id>)' };
-  const r = sendToSession(notice, found, { env, claude, ...(run ? { run } : {}) });
+  const r = sendToSession(notice, found, { env, claude, alternates: alternatesOf(list, found), ...(run ? { run } : {}) });
   return r.sent ? r : { ...r, notice };
 }
