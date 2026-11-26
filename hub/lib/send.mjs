@@ -4,6 +4,9 @@
 // The text is always written by this plugin or typed by the person: never text from GitHub. Every problem comes back
 // as { sent: false, reason }; nothing here throws for a missing claude, a missing session or a failed send.
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { safeCwd } from './exe.mjs';
 import { resolveClaude } from '../../start/lib.mjs';
 
@@ -101,17 +104,31 @@ function result(found, r) {
 }
 
 // The other accounts a send may try when the first answers "Session not found" or has lost its login: the config
-// folders the tracks recorded, and "default". Each try costs one claude start (about 3 s); a wrong account only fails.
-export const MAX_ALTERNATES = 4;
+// folders the tracks recorded, then the other Claude config folders in the home folder (~/.claude-<name> with a
+// .claude.json: only their names are read), then "default". A desktop app session belongs to the app's account, which
+// may be signed in only in one of those folders (2026-11-26: "default" had no CLI login, ~/.claude-acc3 was the same
+// account). Each try costs one claude start (about 3 s); a wrong account only fails.
+export const MAX_ALTERNATES = 8;
 // One key per account: the same folder written with \ or /, a trailing slash or other letter case is one account.
 const accountKey = (dir) => (dir ? asAccount({ configDir: dir }).toLowerCase() : 'default');
-export function alternatesOf(tracked, found) {
+
+/** The ~/.claude-<name> folders that hold a Claude config, newest first. Never throws. */
+export function localConfigDirs(home = homedir()) {
+  try {
+    return readdirSync(home, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && /^\.claude-[\w.-]{1,40}$/.test(d.name) && existsSync(join(home, d.name, '.claude.json')))
+      .map((d) => join(home, d.name).replace(/\\/g, '/'))
+      .sort((a, b) => mtime(join(b, '.claude.json')) - mtime(join(a, '.claude.json')));
+  } catch { return []; }
+}
+const mtime = (f) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
+
+export function alternatesOf(tracked, found, { configDirs = localConfigDirs() } = {}) {
   const tried = found.configDir ? accountKey(found.configDir) : found.account === 'default' ? 'default' : null;
   const byKey = new Map();
-  for (const t of Array.isArray(tracked) ? tracked : []) {
-    const d = t?.owner?.configDir;
-    if (typeof d === 'string' && d && !byKey.has(accountKey(d))) byKey.set(accountKey(d), d);
-  }
+  const add = (d) => { if (typeof d === 'string' && d && !byKey.has(accountKey(d))) byKey.set(accountKey(d), d); };
+  for (const t of Array.isArray(tracked) ? tracked : []) add(t?.owner?.configDir);
+  for (const d of Array.isArray(configDirs) ? configDirs : []) add(d);
   const out = [...byKey].filter(([k]) => k !== tried && k !== 'default').map(([, d]) => ({ ...found, configDir: d, account: asAccount({ configDir: d }) }));
   if (tried !== 'default') out.push({ ...found, configDir: null, account: 'default' });
   return out.slice(0, MAX_ALTERNATES);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.1
+
+- **Messages reach desktop app sessions when only another config folder is signed in.** When a send fails because
+  the session belongs to another account or a login has expired, the hub now also tries the other Claude config
+  folders in your home folder (`~/.claude-<name>` with a `.claude.json`; only their names are read), not just the
+  ones its tracks recorded. Up to 8 accounts are tried.
+
 ## 1.8.0
 
 - **A question from a cloud session always reaches someone.** A question on a branch that a repository watch found

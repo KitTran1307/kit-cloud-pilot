@@ -94,7 +94,8 @@ sets in its tool shells. `track`, `watch` and `wait` start the hub when it is no
 - Sends (`answer`'s notice, auto-handling, `nudge`) run `claude --cloud` as the account that started the session:
   its recorded config folder, or for the account `default` no `CLAUDE_CONFIG_DIR` at all (the desktop app's own
   sign-in). When that account answers "Session not found" or its login has expired, the other accounts the tracks
-  recorded are tried (at most 4); the reason of a failed send says what to do (sign in again, or open the session).
+  recorded are tried, then the other `~/.claude-<name>` config folders on the machine (only their names are read; at
+  most 8 tries in all); the reason of a failed send says what to do (sign in again, or open the session).
 
 ## Accounts set aside
 

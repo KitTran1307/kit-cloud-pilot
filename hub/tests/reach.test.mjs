@@ -5,14 +5,14 @@
 // other known accounts when the session is not this one's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { askReminder, ASK_REMIND_FIRST_MS, ASK_REMIND_EVERY_MS, ASK_REMIND_MAX } from '../lib/events.mjs';
 import { route } from '../lib/route.mjs';
 import { paths, readJson, writeJson, withLock } from '../lib/store.mjs';
-import { sendCommand, sendToSession, sendToSessionAsync, alternatesOf, failure } from '../lib/send.mjs';
+import { sendCommand, sendToSession, sendToSessionAsync, alternatesOf, failure, localConfigDirs } from '../lib/send.mjs';
 import { addTrack, enqueue, moveQueue, takeOwn, pollOnce, ownerDeaf, DEAF_MS } from '../hub.mjs';
 
 for (const k of Object.keys(process.env)) if (/^(KIT_HUB|CLOUD_PILOT)_/.test(k)) delete process.env[k];
@@ -193,7 +193,7 @@ test('send: failures say what to do (not found: another account; expired login: 
 test('send: tries the other known accounts when the session is not this one\'s, and stops at another error', async () => {
   const tracked = [{ owner: { configDir: 'C:/u/.claude-acc2' } }, { owner: { configDir: 'C:/u/.claude-acc4' } }, { owner: { configDir: 'C:/u/.claude-acc2' } }, { owner: {} }];
   const f = found({ configDir: 'C:/u/.claude-acc4', account: 'acc4' });
-  const alts = alternatesOf(tracked, f);
+  const alts = alternatesOf(tracked, f, { configDirs: [] });
   assert.deepEqual(alts.map((a) => [a.configDir, a.account]), [['C:/u/.claude-acc2', 'acc2'], [null, 'default']]);
   const seen = [];
   const run = (prefix, args, env) => { seen.push(env.CLAUDE_CONFIG_DIR ?? 'none'); return env.CLAUDE_CONFIG_DIR ? { status: 1, out: 'Session not found' } : { status: 0, out: '' }; };
@@ -206,7 +206,19 @@ test('send: tries the other known accounts when the session is not this one\'s, 
   const none = sendToSession('hi', f, { env: {}, claude, run: () => ({ status: 1, out: 'Session not found' }), alternates: alts });
   assert.equal(none.sent, false);
   assert.equal(none.reason.split(' | ').length, 3, 'every try is in the reason');
-  assert.deepEqual(alternatesOf([], found({ account: 'default' })), [], '"default" was the one tried');
+  assert.deepEqual(alternatesOf([], found({ account: 'default' }), { configDirs: [] }), [], '"default" was the one tried');
   const spelled = [{ owner: { configDir: 'C:\\u\\.claude-ACC4\\' } }, { owner: { configDir: 'C:/u/.claude' } }, { owner: { configDir: 'C:/u/.claude-acc5' } }];
-  assert.deepEqual(alternatesOf(spelled, f).map((a) => a.account), ['acc5', 'default'], 'one try per account, ~/.claude is default');
+  assert.deepEqual(alternatesOf(spelled, f, { configDirs: [] }).map((a) => a.account), ['acc5', 'default'], 'one try per account, ~/.claude is default');
+  // A desktop app session (account "default", no CLI login there) is reached through a config folder on the machine.
+  const desk = alternatesOf([{ owner: { configDir: 'C:/u/.claude-acc2' } }], found({ account: 'default' }), { configDirs: ['C:/u/.claude-acc3', 'C:/u/.claude-ACC2'] });
+  assert.deepEqual(desk.map((a) => a.account), ['acc2', 'acc3']);
+});
+
+test('send: the ~/.claude-<name> folders with a config are found, newest first, and nothing else', (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'kit-hub-home-'));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const mk = (name, withConfig, ms) => { mkdirSync(join(home, name)); if (withConfig) { writeFileSync(join(home, name, '.claude.json'), '{}'); utimesSync(join(home, name, '.claude.json'), ms / 1000, ms / 1000); } };
+  mk('.claude-old', true, T0); mk('.claude-new', true, T0 + MIN); mk('.claude-empty', false, 0); mk('.claude', true, T0); mk('other', true, T0);
+  assert.deepEqual(localConfigDirs(home).map((d) => d.split('/').pop()), ['.claude-new', '.claude-old']);
+  assert.deepEqual(localConfigDirs(join(home, 'missing')), []);
 });
