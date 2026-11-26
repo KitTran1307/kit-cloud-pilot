@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.1
+
+- **Easier to report a problem or ask a question:** issue forms for bugs and ideas, and a link to Discussions for
+  questions and setups. Nothing changes in the tool itself.
+
 ## 1.9.0
 
 - **`start --environment <env_id>` runs the session in the cloud environment you name.** Without it, `claude --cloud`

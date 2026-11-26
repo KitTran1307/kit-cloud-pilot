@@ -129,6 +129,14 @@ The older `KIT_HUB_*` names (from kit-cloud 1.x) still work. More in [hub/README
 - The signing key never leaves your machine and is refused inside any git repository. See [SECURITY.md](SECURITY.md).
 - Briefs are passed to `claude --cloud` as an argument (visible in the process list): keep secrets out of them.
 
+## Feedback
+
+If cloud-pilot saves you time, a ⭐ on this repository helps other Claude Code users find it.
+
+Bugs and ideas: open an [issue](https://github.com/KitTran1307/kit-cloud-pilot/issues/new/choose) (a form guides you).
+Questions and how you use it: [Discussions](https://github.com/KitTran1307/kit-cloud-pilot/discussions). Security
+problems: [SECURITY.md](SECURITY.md), not a public issue.
+
 ## Development
 
 ```

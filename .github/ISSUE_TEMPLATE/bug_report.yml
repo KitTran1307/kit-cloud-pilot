@@ -1,0 +1,39 @@
+name: Bug report
+description: cloud-pilot does not start, track, wait for or answer a cloud session as described.
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options: [start, track or watch, wait (events), questions and answers, plugin or install, doctor, not sure]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what happened instead. Paste messages as text.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of cloud-pilot doctor
+      description: Run `/pilot doctor` (or `node bin/cloud-pilot.mjs doctor`) and paste it. Remove repository names you keep private.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: `claude --version`, `node --version`, `gh --version` and the cloud-pilot version.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      multiple: true
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true

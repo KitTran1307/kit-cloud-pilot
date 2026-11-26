@@ -1,0 +1,22 @@
+name: Idea or request
+description: Something you wish a plugin did, or a new mod you would like to see.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: What would help
+      description: What you were trying to do, and what got in the way. A sketch or screenshot is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work (optional)
+      description: Any idea of what it would look like: a band, a command, a setting...
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where you use Claude Code
+      multiple: true
+      options: [CLI on Windows, CLI on macOS, CLI on Linux, Desktop app on Windows, Desktop app on macOS, Web or mobile]
