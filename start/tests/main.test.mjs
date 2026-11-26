@@ -42,7 +42,8 @@ describe('a successful start', () => {
     const r = await run(main, ['--cwd', s.repo, '--brief', BRIEF], s.opts);
     assert.equal(r.code, 0);
     assert.equal(r.lines.length, 1);
-    assert.deepEqual(Object.keys(r.json), ['ok', 'session_id', 'url', 'account_dir', 'account', 'repo', 'branch', 'hub']);
+    assert.deepEqual(Object.keys(r.json), ['ok', 'session_id', 'url', 'account_dir', 'account', 'repo', 'branch', 'environment', 'hub']);
+    assert.equal(r.json.environment, 'default', 'no --environment: the account default is named');
     assert.equal(r.json.ok, true);
     assert.equal(r.json.session_id, 'session_TEST123');
     assert.equal(r.json.url, 'https://claude.ai/code/session_TEST123');
@@ -51,6 +52,17 @@ describe('a successful start', () => {
     assert.equal(r.json.repo, 'acme/widgets');
     assert.equal(r.json.branch, 'claude/pricing-table');
     assert.deepEqual(started(s).args, ['--cloud', BRIEF]);
+  });
+
+  test('--environment: claude gets a --settings file that pins it, and the line names it', { skip: !hasGit && 'git is not installed' }, async () => {
+    const s = setup();
+    const r = await run(main, ['--cwd', s.repo, '--brief', BRIEF, '--environment', 'env_01ABCdef'], s.opts);
+    assert.equal(r.code, 0);
+    assert.equal(r.json.environment, 'env_01ABCdef');
+    const args = started(s).args;
+    assert.equal(args[0], '--settings');
+    assert.deepEqual(args.slice(2), ['--cloud', BRIEF]);
+    assert.deepEqual(JSON.parse(readFileSync(args[1], 'utf8')), { remote: { defaultEnvironmentId: 'env_01ABCdef' } });
   });
 
   test('permission mode: the flag, else CLOUD_PILOT_PERMISSION_MODE, else none', { skip: !hasGit && 'git is not installed' }, async () => {

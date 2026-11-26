@@ -59,7 +59,7 @@ cloud-pilot wait                                         # in the background: re
 
 | Command | What it does |
 | --- | --- |
-| `start --brief-file <f> [--cwd] [--branch claude/x]` | Start a cloud session and track it ([start/README.md](start/README.md)) |
+| `start --brief-file <f> [--cwd] [--branch claude/x] [--environment env_…]` | Start a cloud session (in the cloud environment you name, else the account's default) and track it ([start/README.md](start/README.md)) |
 | `track --repo o/n [--branch] [--url] [--title]` | Track a session started elsewhere (web, desktop app) |
 | `watch --repo o/n` / `unwatch` | Track every new `claude/*` branch of a repo by itself |
 | `wait [--max-min 240]` | Wait for this session's events; one JSON line |

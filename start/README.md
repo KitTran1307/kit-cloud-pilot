@@ -69,6 +69,10 @@ node start/index.mjs [--cwd <repo>] (--brief-file <file> | --brief "<text>") [op
 | `--branch claude/<slug>` | The branch the session works on. Default: taken from the brief, see below. |
 | `--title "<text>"` | Title shown by the hub. Default: the first line of the brief that has a letter or digit in it, at most 200 characters. |
 | `--timeout <sec>` | How long to wait for the session link. Default 90, at most 3600. Setting up Python on first use is not counted. |
+| `--permission-mode <m>` | The session's permission mode (default `CLOUD_PILOT_PERMISSION_MODE`, else claude's own default). |
+| `--model <m>` | The session's lead model: an alias (`sonnet`, `haiku`) or a full name (default `CLOUD_PILOT_MODEL`, else the account default). |
+| `--effort <e>` | The session's effort level (default `CLOUD_PILOT_EFFORT`). |
+| `--environment <env_id>` | The cloud environment the session runs in (its variables, network and setup script). Without it `claude --cloud` uses the account's default environment (the one `/remote-env` in claude picks), which may belong to another project and carry its variables. Passed to claude as a `--settings` file that sets `remote.defaultEnvironmentId`, for this start only. |
 | `--no-track` | Do not register the session with the hub. |
 | `--help` | Print the usage text (the only output that is not JSON) and exit 0. |
 
@@ -114,6 +118,7 @@ Success:
 | `account` | The account name: `default` for `~/.claude`, `work` for `~/.claude-work`, from `CLAUDE_CONFIG_DIR` (same rule as the hub) |
 | `repo` | `owner/name` of the GitHub origin, or `""` |
 | `branch` | The branch used for tracking, or `""` |
+| `environment` | The `--environment` id that was asked for, or `"default"` when none was given (the account's default environment) |
 | `hub` | `{"id":"<track id>"}` when registered; `"skipped: --no-track"` or `"skipped: no GitHub origin"`; `"failed: <why>"` if registering failed. If the hub could not be launched the object also has `"daemon":"not started: <why>"`. A hub problem never turns a started session into a failure. |
 
 Failure:
@@ -140,8 +145,8 @@ Failure:
 
 ### Prompts are never answered
 
-If `claude --cloud` asks the folder trust question, a login choice, an environment or repository picker or a `(y/n)`
-question, `start` closes it and fails, naming which one (`prompt` field). It never answers for you. Answer it once by
+If `claude --cloud` asks the folder trust question, a login choice, its first-run setup (a config folder that never ran
+`claude`), an environment or repository picker or a `(y/n)` question, `start` closes it and fails, naming which one (`prompt` field). It never answers for you. Answer it once by
 hand (`claude` in that folder for trust, `claude auth login` for login) and start again.
 
 Prompts are recognized from `claude`'s own lines only. Lines that merely echo the brief are ignored, so a brief about
@@ -198,7 +203,8 @@ helper, standard library plus `pywinpty` on Windows).
   session by uploading the local repository. Then `hub` is `skipped: no GitHub origin` and nothing is tracked. On native
   Windows, uncommitted edits to tracked files upload as they are, credential-named files included (see the Claude Code
   documentation, "Send local repositories without GitHub"). `start` does not check for that: commit or stash first.
-- It does not choose a model or effort: the session starts with the account's defaults.
+- It does not pick a model, effort or environment by itself: without `--model`, `--effort` and `--environment` (or
+  their settings) the session starts with the account's defaults.
 - One start at a time per call; run several calls for several sessions. Windows first-use setup is serialized by a lock.
 - Follow-up messages to a running session need no wrapper: `claude -p "message" --cloud <session_id>`.
 

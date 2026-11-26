@@ -5,7 +5,7 @@
 | Part | Reads | Writes | Runs | Network |
 | --- | --- | --- | --- | --- |
 | hub (`cloud-pilot track/watch/wait/status`) | its data folder | its data folder (`~/.claude/cloud-pilot`) | `gh`, `git` | GitHub API through `gh` |
-| start (`cloud-pilot start`) | the brief file, the repo's origin | a line per start in `sessions.jsonl` (no brief text) | `python` + `claude --cloud` | Claude Code |
+| start (`cloud-pilot start`) | the brief file, the repo's origin | a line per start in `sessions.jsonl` (no brief text); with `--environment`, `start-settings/<env_id>.json` (only that id) | `python` + `claude --cloud` | Claude Code |
 | channel (`channel`, `answer`) | the question comment, your private key | a signed answer comment; `channel setup` writes into the repo you name | `gh` | GitHub API |
 | plugin | environment | `install.json` in the data folder | the CLI, for `/pilot` | none |
 

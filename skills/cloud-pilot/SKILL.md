@@ -12,10 +12,14 @@ A cloud session runs on an Anthropic-hosted machine, from the repo's GitHub remo
 spares this machine, not usage. Results come back through GitHub (a branch and a pull request), never as a reply.
 
 ## When to use it, and when not
-- Use it for real work that can run unattended: a feature or fix with tests, a refactor, a batch of edits.
+- Prefer it for real work that can run unattended, above all work that would load this machine: long builds, test
+  suites, browsers, a feature or fix with tests, a refactor, a batch of edits. When the person asked for cloud work or
+  their instructions say cloud is their default, start fitting work there without asking; otherwise offer it once.
 - Keep local: quick fixes, questions, design discussion, and anything needing this machine: SSH to a server (the
-  cloud reaches the internet through an HTTPS proxy only), devices, OS tools, local services, secrets that are not in
-  the cloud environment, and anything that spends money. Split mixed work.
+  cloud reaches the internet through an HTTPS proxy only), devices, OS tools, local services, and anything that
+  spends money. Split mixed work: the local part here, the rest in the cloud.
+- A secret the work needs belongs in the repo's cloud environment (its variables, set on claude.ai). If it is not
+  there, ask the person to add it instead of keeping the whole task local; keep local only the step that needs it.
 - The person's own instructions win: if their CLAUDE.md says a project or account stays local, keep it local.
   `CLOUD_PILOT_LOCAL_ONLY` makes `cloud-pilot start` refuse listed accounts.
 
@@ -45,8 +49,14 @@ uncommitted credential file is tracked (`git status --porcelain` showing `.env`,
 Write the brief to a file (not in the repo), then:
 
 ```
-cloud-pilot start --cwd <repo> --brief-file <file> [--branch claude/<slug>]
+cloud-pilot start --cwd <repo> --brief-file <file> [--branch claude/<slug>] [--environment <env_id>]
 ```
+
+Without `--environment` the session runs in the account's default environment (the one `/remote-env` in claude
+picks), not one named after the repo: with several projects it may carry another project's variables. When the person
+keeps one environment per repo, pass its id (`env_…`); the JSON line's `environment` says which one was asked for.
+If the work needs the repo's variables and you do not know its environment id, ask once (or ask the person to pick it
+with `/remote-env`) before starting.
 
 It prints one JSON line: `{"ok":true,"session_id","url","hub":{...}}`, already registered for tracking; give the
 person the `url`. On `{"ok":false}` read `error` and `tail`; it never answers a trust or login prompt itself (the

@@ -41,11 +41,13 @@ Usage: node start/index.mjs [--cwd <repo>] (--brief-file <file> | --brief "<text
   --model <m>             the session's lead model: an alias (sonnet, haiku) or a full model name (default:
                           CLOUD_PILOT_MODEL, else the model this claude would start with)
   --effort <e>            the session's effort level: ${EFFORTS.join(', ')} (default: CLOUD_PILOT_EFFORT)
+  --environment <env_id>  the cloud environment to run in (its variables and network); default: the account's default
+                          environment, which is usually NOT the one named after the repository
   --no-track              do not register the session with the cloud-pilot hub
   --help                  this text
 
 The brief is at most ${MAX_BRIEF} characters. Prints one JSON line:
-  {"ok":true,"session_id":"...","url":"...","account_dir":"...","hub":{"id":"..."}}
+  {"ok":true,"session_id":"...","url":"...","account_dir":"...","environment":"env_... or default","hub":{"id":"..."}}
   {"ok":false,"error":"...","tail":"..."}     (exit code 1)
 Environment: CLOUD_PILOT_CLAUDE_BIN, CLOUD_PILOT_LOCAL_ONLY, CLOUD_PILOT_PERMISSION_MODE, CLOUD_PILOT_MODEL,
 CLOUD_PILOT_EFFORT, CLOUD_PILOT_DENY_MODELS, CLOUD_PILOT_PYTHON, CLOUD_PILOT_DIR.
@@ -53,7 +55,9 @@ CLOUD_PILOT_EFFORT, CLOUD_PILOT_DENY_MODELS, CLOUD_PILOT_PYTHON, CLOUD_PILOT_DIR
 
 // ---- arguments ------------------------------------------------------------------------------------------------------
 
-const VALUE_FLAGS = new Set(['cwd', 'brief', 'brief-file', 'branch', 'title', 'timeout', 'permission-mode', 'model', 'effort']);
+const VALUE_FLAGS = new Set(['cwd', 'brief', 'brief-file', 'branch', 'title', 'timeout', 'permission-mode', 'model', 'effort', 'environment']);
+// A claude.ai cloud environment id (GET /v1/environment_providers lists them as environment_id).
+export const ENVIRONMENT_RE = /^env_[A-Za-z0-9]{6,64}$/;
 const BOOL_FLAGS = new Set(['no-track', 'help']);
 
 // A value flag always takes the next argument as its value, even one that starts with "--" (a brief "--- notes").
@@ -88,6 +92,7 @@ export function parseArgs(argv) {
   if (raw['permission-mode'] !== undefined) checkMode(raw['permission-mode']);
   if (raw.model !== undefined) checkModel(raw.model);
   if (raw.effort !== undefined) checkEffort(raw.effort);
+  if (raw.environment !== undefined && !ENVIRONMENT_RE.test(raw.environment)) throw new StartError('usage: --environment must be a cloud environment id (env_...)');
   return {
     help: false,
     cwd: raw.cwd,
@@ -100,6 +105,7 @@ export function parseArgs(argv) {
     permissionMode: raw['permission-mode'],
     model: raw.model,
     effort: raw.effort,
+    environment: raw.environment,
   };
 }
 
@@ -147,9 +153,13 @@ export function briefArg(brief) {
 }
 
 // claude --cloud sends --model and --effort with the new session (session_context.model / effort_level).
-export function claudeArgv(prefix, brief, mode, { model, effort } = {}) {
+// settingsFile: a JSON file passed as --settings; it pins remote.defaultEnvironmentId (flag settings are a trusted source
+// for it: checked on real sessions with claude 2.1.332; 2.1.300 and 2.1.330 know the key too). Without it the session runs
+// in the account's default environment, not the repo's.
+export function claudeArgv(prefix, brief, mode, { model, effort, settingsFile } = {}) {
   return [
     ...prefix,
+    ...(settingsFile ? ['--settings', settingsFile] : []),
     ...(mode ? ['--permission-mode', mode] : []),
     ...(model ? ['--model', model] : []),
     ...(effort ? ['--effort', effort] : []),
@@ -264,6 +274,8 @@ export const PROMPTS = [
   { kind: 'trust', re: /^(?:do you trust\b|is this a project you\b|quick safety check\b|yes, i trust this folder\b)|\btrust (?:the files in )?this (?:folder|directory)\??$/i },
   { kind: 'login', re: /^(?:cloud sessions need a claude\.ai sign-in\b|cloud sessions aren'?t available with this console sign-in\b|unable to get organization uuid\b|not logged in\b|you are not logged in\b|please (?:run )?\/?log ?in\b|please sign in\b|select login method\b|choose (?:a )?login method\b|paste (?:the )?code here\b|browser didn'?t open\b|opening browser to sign in\b|invalid api key\b|oauth token has expired\b|run \/login\b|(?:sign|log) in (?:to|with)\b|\d\.\s*(?:claude account with subscription|anthropic console account)\b)/i },
   { kind: 'codemode', re: /^[❯>]?\s*(?:no, start without it\b|yes, turn on code mode\b)/i },
+  // claude's first-run setup on a config folder that never ran claude (seen for real: "Choose the text style that looks best").
+  { kind: 'setup', re: /^choose the text style\b/i },
   { kind: 'confirm', re: /(?:\(y\/n\)|\[y\/n\]|\(yes\/no\)|\[yes\/no\])\s*[:?]?$/i },
   { kind: 'picker', re: /^(?:select|choose|pick) (?:an? |the )?(?:environment|repository|repo|organization|account|region)\b|\benter to (?:select|confirm)\b.*\besc\b|\bto navigate\b.*\besc\b/i },
 ];
@@ -275,6 +287,7 @@ export const PROMPTS_NOSPACE = [
   { kind: 'login', re: /^(?:cloudsessionsneedaclaude\.aisign-in|notloggedin|youarenotloggedin|please(?:run)?\/?login|pleasesignin|selectloginmethod|choose(?:a)?loginmethod|pastethecodehere|invalidapikey|oauthtokenhasexpired|run\/login)/i },
   // Code Mode's first-run question, seen for real as "❯No, start without itYes, turn on Code Mode".
   { kind: 'codemode', re: /^[❯>]?(?:no,startwithoutit|yes,turnoncodemode)/i },
+  { kind: 'setup', re: /^choosethetextstyle/i },
   { kind: 'picker', re: /^(?:select|choose|pick)(?:an?|the)?(?:environment|repository|repo|organization|account|region)|entertoconfirm.*esc/i },
 ];
 
@@ -317,6 +330,7 @@ export function promptError(kind, cwd) {
   const where = {
     trust: `open claude once in ${cwd} and accept the trust question, then retry`,
     login: 'run "claude auth login" (or /login inside claude), then retry',
+    setup: 'claude has never run with this config folder: run "claude" once yourself, finish its first-run questions, then retry',
     codemode: 'Code Mode asks once per account: run "claude" yourself on this account, choose "Yes, turn on Code Mode", then retry',
     confirm: 'run "claude --cloud" yourself once to answer it, then retry',
     picker: 'run "claude --cloud" yourself once and pick the environment or repository, then retry',

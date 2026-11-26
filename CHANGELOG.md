@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0
+
+- **`start --environment <env_id>` runs the session in the cloud environment you name.** Without it, `claude --cloud`
+  uses the account's default environment, not the one named after the repository: a session then gets another
+  project's variables (found by an end-to-end check: two repositories both ran with a third one's 13 variables). The id
+  goes to claude as a `--settings` file that sets `remote.defaultEnvironmentId`; the session record shows the chosen
+  `environment_id`. The JSON line now has `environment`: the id asked for, or `default` when none was given.
+- **Claude prefers the cloud for work that fits it**, above all work that would load your machine (long builds, test
+  suites, browsers). When you asked for cloud work or your instructions make it the default, Claude starts it without
+  asking; otherwise it offers once. A secret missing from the cloud environment is no longer a reason to keep a whole
+  task local: Claude asks for it to be added and keeps only the step that needs it here. Without a known environment
+  for a repo whose variables the work needs, Claude asks once instead of starting in the account's default.
+- **A config folder that never ran `claude` fails at once** with what to do (`prompt: "setup"`), instead of waiting
+  for the timeout at claude's first-run questions.
+
 ## 1.8.1
 
 - **Messages reach desktop app sessions when only another config folder is signed in.** When a send fails because

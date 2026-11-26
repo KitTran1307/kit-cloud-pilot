@@ -4,7 +4,7 @@
 //
 //   node start/index.mjs [--cwd <repo>] (--brief-file <file> | --brief "<text>") [--branch claude/<slug>]
 //                        [--title "<text>"] [--timeout <sec>] [--permission-mode <m>]
-//                        [--model <m>] [--effort <e>] [--no-track] [--help]
+//                        [--model <m>] [--effort <e>] [--environment <env_id>] [--no-track] [--help]
 //
 // `claude --cloud <brief>` takes the brief as a command-line argument, so it is visible in the process list while the
 // client runs: never put secrets in a brief.
@@ -12,7 +12,7 @@ import { appendFileSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addTrack, ensureHub, caller, accountName } from '../hub/hub.mjs';
-import { paths, hubDir, privateDir, privateFile } from '../hub/lib/store.mjs';
+import { paths, hubDir, privateDir, privateFile, writeJson } from '../hub/lib/store.mjs';
 import { asideMessage, setAsideOf } from '../hub/lib/accounts.mjs';
 import { rmSync, writeFileSync } from 'node:fs';
 import { setting } from '../hub/lib/config.mjs';
@@ -156,7 +156,13 @@ export async function main(argv, opts = {}) {
     const envEffort = setting('EFFORT', env);
     const effort = args.effort ?? (envEffort ? checkEffort(envEffort) : undefined);
 
-    handle = await (opts.start ?? defaultStart)({ argv: claudeArgv(claude.prefix, brief, mode, { model, effort }), cwd, env });
+    let settingsFile;
+    if (args.environment) {
+      // Written whole and renamed into place: two starts with the same id never let claude read a half-written file.
+      settingsFile = join(hubDir(env), 'start-settings', `${args.environment}.json`);
+      writeJson(settingsFile, { remote: { defaultEnvironmentId: args.environment } });
+    }
+    handle = await (opts.start ?? defaultStart)({ argv: claudeArgv(claude.prefix, brief, mode, { model, effort, settingsFile }), cwd, env });
     const res = await collect(handle, { brief, timeoutMs: args.timeoutSec * 1000, settleMs: opts.settleMs ?? SETTLE_MS });
     const explain = handle.explain;
     await handle.stop();
@@ -174,7 +180,7 @@ export async function main(argv, opts = {}) {
     const p = paths(hubDir(env));
     const hub = track({ args, env, cwd, me, url: res.url, title, branch, p, spawnHub: opts.spawnHub, sessionId: res.sessionId, brief });
     logStart(p, { time: new Date().toISOString(), account, repo: me.gh, branch, title, session_id: res.sessionId, url: res.url });
-    say({ ok: true, session_id: res.sessionId, url: res.url, account_dir: env.CLAUDE_CONFIG_DIR ?? '', account, repo: me.gh, branch, hub });
+    say({ ok: true, session_id: res.sessionId, url: res.url, account_dir: env.CLAUDE_CONFIG_DIR ?? '', account, repo: me.gh, branch, environment: args.environment ?? 'default', hub });
     return 0;
   } catch (err) {
     if (handle) { try { await handle.stop(); } catch { /* already gone */ } }

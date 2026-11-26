@@ -84,6 +84,10 @@ describe('detectPrompt', () => {
     assert.equal(detectPrompt('Create a new environment? (y/n)').kind, 'confirm');
     assert.equal(detectPrompt('Overwrite? [Y/n]').kind, 'confirm');
     assert.equal(detectPrompt('Select an environment\n 1. Default').kind, 'picker');
+    assert.equal(detectPrompt("Let's get started.\nChoose the text style that looks best with your terminal\n❯ Dark mode").kind, 'setup');
+    assert.equal(detectPrompt('Choosethetextstylethatlooksbest').kind, 'setup');
+    assert.equal(detectPrompt('Fix how we choose the text style', 'Fix how we choose the text style'), null, 'the brief is not a prompt');
+    assert.match(promptError('setup', '/r'), /first-run questions/);
     assert.equal(detectPrompt('\u2191/\u2193 to navigate \u00b7 Enter to select \u00b7 Esc to cancel').kind, 'picker');
   });
   test('a trust question wins over the footer it shares with menus', () => {
@@ -188,11 +192,11 @@ describe('title', () => {
 describe('parseArgs', () => {
   test('defaults', () => {
     const a = parseArgs(['--brief', 'do it']);
-    assert.deepEqual(a, { help: false, cwd: undefined, brief: 'do it', briefFile: undefined, branch: undefined, title: undefined, timeoutSec: 90, track: true, permissionMode: undefined, model: undefined, effort: undefined });
+    assert.deepEqual(a, { help: false, cwd: undefined, brief: 'do it', briefFile: undefined, branch: undefined, title: undefined, timeoutSec: 90, track: true, permissionMode: undefined, model: undefined, effort: undefined, environment: undefined });
   });
   test('every flag, both spellings', () => {
     const a = parseArgs(['--cwd', '/r', '--brief-file=b.md', '--branch', 'claude/x', '--title=T', '--timeout', '30', '--no-track', '--permission-mode', 'auto']);
-    assert.deepEqual(a, { help: false, cwd: '/r', brief: undefined, briefFile: 'b.md', branch: 'claude/x', title: 'T', timeoutSec: 30, track: false, permissionMode: 'auto', model: undefined, effort: undefined });
+    assert.deepEqual(a, { help: false, cwd: '/r', brief: undefined, briefFile: 'b.md', branch: 'claude/x', title: 'T', timeoutSec: 30, track: false, permissionMode: 'auto', model: undefined, effort: undefined, environment: undefined });
   });
   test('a value that starts with -- is still a value', () => {
     assert.equal(parseArgs(['--brief', '--- notes']).brief, '--- notes');
@@ -235,6 +239,9 @@ describe('brief', () => {
     assert.deepEqual(claudeArgv(['/bin/claude'], 'do it'), ['/bin/claude', '--cloud', 'do it']);
     assert.deepEqual(claudeArgv(['node', 'fake.mjs'], '-x'), ['node', 'fake.mjs', '--cloud', ' -x']);
     assert.deepEqual(claudeArgv(['claude'], 'do it', 'auto'), ['claude', '--permission-mode', 'auto', '--cloud', 'do it']);
+    assert.deepEqual(claudeArgv(['claude'], 'do it', undefined, { settingsFile: 'C:/x/env_abc123.json' }), ['claude', '--settings', 'C:/x/env_abc123.json', '--cloud', 'do it']);
+    assert.equal(parseArgs(['--brief', 'x', '--environment', 'env_01ABCdef']).environment, 'env_01ABCdef');
+    assert.throws(() => parseArgs(['--brief', 'x', '--environment', 'prod; rm -rf /']), /--environment must be/);
     assert.deepEqual(claudeArgv(['claude'], 'do it', 'auto', { model: 'sonnet', effort: 'high' }),
       ['claude', '--permission-mode', 'auto', '--model', 'sonnet', '--effort', 'high', '--cloud', 'do it']);
   });
